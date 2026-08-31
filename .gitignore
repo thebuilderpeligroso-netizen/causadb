@@ -1,0 +1,48 @@
+# === Runtime / datos locales ===
+.causadb/
+*.db
+*.log
+*.pid
+pids/
+logs/
+ocb/
+blobs/
+
+# === Python / entornos ===
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+.tox/
+
+# === Editores ===
+.vscode/
+.idea/
+
+# === Builds / backups pesados ===
+*.tar.gz
+*.tgz
+*.AppImage
+*.deb
+*.zip
+backups/
+
+# === Internos del proyecto (no se publican) ===
+CAUSADB_CHRONICLE.md
+causadb.opencode.jsonc
+causadb.claude_desktop.jsonc
+
+# === Basura / artefactos residuales ===
+proj.py
+MagicMock/
+=2.3
+_archive/
+*.lock

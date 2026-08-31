@@ -1,0 +1,65 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -e .
+      - name: Build binary
+        run: pyinstaller build_binary.spec --clean --noconfirm
+      - uses: sigstore/cosign-installer@main
+      - name: Sign binary
+        run: |
+          cosign sign-blob --yes \
+            --output-signature dist/causadb.sig \
+            --output-certificate dist/causadb.pem \
+            dist/causadb
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: causadb-release
+          path: |
+            dist/causadb
+            dist/causadb.sig
+            dist/causadb.pem
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/causadb
+            dist/causadb.sig
+            dist/causadb.pem
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows-installer:
+    runs-on: windows-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Windows SFX installer
+        shell: pwsh
+        run: |
+          ./scripts/packaging/windows/build_sfx.ps1 ./dist
+      - name: Upload SFX to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./dist/causadb-installer.bat
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

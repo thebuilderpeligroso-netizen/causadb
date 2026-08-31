@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include docs/canon.md
+include causadb.opencode.jsonc
+recursive-include docs *.md
+recursive-include causadb/causadb *.jsonc
+recursive-include causadb/skills **/SKILL.md

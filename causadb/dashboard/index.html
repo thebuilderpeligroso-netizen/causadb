@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CausaDB — Ledger Intelligence</title>
+  <link rel="stylesheet" href="/dashboard/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1 class="logo">⬡ CausaDB <span>Ledger</span></h1>
+      <div class="workspace-selector">
+        <select id="workspace-select">
+          <option value="">Cargando proyectos…</option>
+        </select>
+      </div>
+      <div class="search-container">
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Buscar eventos… (RNA, FILE_MODIFIED, governance)"
+          autocomplete="off"
+        />
+        <span id="search-status" class="search-status"></span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="status-bar">
+      <div id="event-count">0 events</div>
+      <div class="daemon-controls">
+        <span id="daemon-indicator" class="daemon-indicator stopped" title="Estado del daemon">⬤</span>
+        <button id="daemon-toggle-btn" class="daemon-btn">Iniciar Daemon</button>
+        <div class="daemon-subservices">
+          <span class="subservice inactive" data-service="vigilante" title="Vigilante">V</span>
+          <span class="subservice inactive" data-service="mcp_proxy" title="MCP Proxy">M</span>
+          <span class="subservice inactive" data-service="proxy_server" title="Proxy LLM">P</span>
+        </div>
+      </div>
+      <span id="refresh-status" class="clickable" title="Toggle auto-refresh">auto-refresh off</span>
+    </div>
+
+<div class="metrics-row">
+  <div class="metric-card" data-type="score" id="metric-score" style="cursor:pointer" title="Click for detail">
+    <div class="metric-icon">⚡</div>
+    <div class="metric-value" id="metric-score-value">—</div>
+    <div class="metric-label">Productivity Score</div>
+  </div>
+  <div class="metric-card" data-type="events" id="metric-event-count">
+    <div class="metric-icon">◈</div>
+    <div class="metric-value" id="metric-event-count-value">0</div>
+    <div class="metric-label">Events</div>
+  </div>
+  <div class="metric-card" data-type="tests" id="metric-test-count">
+    <div class="metric-icon">✓</div>
+    <div class="metric-value" id="metric-test-count-value">—</div>
+    <div class="metric-label">Tests</div>
+  </div>
+  <div class="metric-card" data-type="commands" id="metric-commands">
+    <div class="metric-icon">⚙</div>
+    <div class="metric-value" id="metric-commands-value">0</div>
+    <div class="metric-label">Commands Run</div>
+  </div>
+</div>
+
+    <div class="secondary-bar">
+      <div id="score-panel" class="hidden">
+        <div id="score-main" class="score-main clickable" title="Click for details">
+          <span id="score-value" class="score-value">—</span>
+          <span class="score-label">Score</span>
+          <span class="score-bars">
+            <span class="score-bar-label">C</span><span id="score-bar-churn" class="score-bar-fill" style="width:0%"></span>
+            <span class="score-bar-spacer"></span>
+            <span class="score-bar-label">W</span><span id="score-bar-waste" class="score-bar-fill" style="width:0%"></span>
+            <span class="score-bar-spacer"></span>
+            <span class="score-bar-label">S</span><span id="score-bar-survival" class="score-bar-fill" style="width:0%"></span>
+          </span>
+        </div>
+        <button id="score-refresh" class="score-refresh-btn" title="Refresh Score">↻</button>
+      </div>
+
+      <div id="telemetry-bar" class="telemetry-bar">
+        <label class="toggle-switch">
+          <input type="checkbox" id="telemetry-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label">Telemetría</span>
+        <span class="toggle-info">Solo crash reports y métricas de uso. Nunca datos personales.</span>
+      </div>
+    </div>
+
+    <div id="update-banner" class="update-banner hidden">
+      <span>⚡ Nueva versión disponible: </span>
+      <span id="update-banner-version">v?</span>
+      <a href="#" id="update-banner-btn">Actualizar</a>
+    </div>
+
+    <div id="crash-banner" class="crash-banner hidden">
+      <span id="crash-banner-text"></span>
+      <button id="crash-banner-btn">Ver</button>
+    </div>
+
+    <div id="loading" class="hidden">
+      <div class="spinner"></div>
+      <span>Loading ledger events…</span>
+    </div>
+
+    <div id="error-state" class="hidden"></div>
+
+    <div id="empty-state" class="hidden">
+      <span class="empty-icon">◌</span>
+      <span>No events found.</span>
+    </div>
+
+    <div id="timeline-container">
+      <div id="timeline-line"></div>
+      <div id="timeline-events"></div>
+    </div>
+  </main>
+
+  <div id="export-toolbar">
+    <span style="color:var(--text-muted);font-size:0.82rem;">Export:</span>
+    <button id="export-csv">CSV</button>
+    <button id="export-json">JSON</button>
+  </div>
+
+  <div id="revive-toolbar">
+    <label for="revive-datetime">Revive to (UTC):</label>
+    <input type="datetime-local" id="revive-datetime">
+    <button id="revive-button">Revive</button>
+    <span id="revive-status"></span>
+  </div>
+
+  <pre id="revive-result" class="hidden"></pre>
+
+  <div id="event-detail-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Event Detail</h2>
+        <button class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <pre id="event-detail-json"></pre>
+      <div id="trace-section" class="hidden">
+        <div class="trace-header">
+          <h3>Causal Trace</h3>
+          <button id="trace-button" class="trace-btn">Load Trace</button>
+          <span id="trace-status" class="trace-status"></span>
+        </div>
+        <div id="trace-tree" class="trace-tree"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="score-detail-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Score Detail</h2>
+        <button class="modal-close" id="score-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div id="score-detail-content">
+        <div id="score-detail-numbers"></div>
+        <div id="score-detail-warnings" class="score-warnings"></div>
+        <div id="score-detail-sessions" class="score-sessions"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="crash-modal" class="modal hidden">
+    <div class="modal-backdrop" id="crash-modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Reportes de Crash</h2>
+        <button class="modal-close" id="crash-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div id="crash-list" style="padding:1rem 1.25rem;overflow:auto;max-height:50vh;"></div>
+      <p class="privacy-notice">Estos reportes son 100% anónimos. No incluyen tus datos, rutas, archivos ni claves. Compartirlos ayuda a que los bugs se corrijan más rápido.</p>
+      <div class="crash-actions">
+        <button id="crash-send-all">Enviar todos</button>
+        <button id="crash-delete-all">Borrar todos</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="chat-btn" class="chat-btn" title="Asistente">?</button>
+
+  <div id="chat-modal" class="modal hidden">
+    <div class="modal-content chat-modal-content">
+      <span class="close" id="chat-modal-close">&times;</span>
+      <h2>Asistente CausaDB</h2>
+      <div id="chat-messages" class="chat-messages">
+        <div class="chat-msg assistant">¡Hola! Soy el asistente de CausaDB. Preguntame sobre tu proyecto o cómo usar CausaDB.</div>
+      </div>
+      <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="Escribí tu pregunta…" />
+        <button id="chat-send-btn">Enviar</button>
+      </div>
+      <div id="chat-status" class="chat-status hidden"></div>
+    </div>
+  </div>
+
+  <script src="/dashboard/app.js"></script>
+</body>
+</html>

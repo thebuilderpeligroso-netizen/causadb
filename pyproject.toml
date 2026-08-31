@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "causadb"
+version = "0.2.0"
+description = "Causal ledger middleware for AI agents — deterministic past reconstruction, undo, and audit"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "CausaDB", email = "causadb@causadb.dev" },
+]
+keywords = [
+    "causal", "ledger", "hash-chain", "agent", "ai", "observability",
+    "replay", "undo", "audit", "side-effects", "memory",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "mcp",
+    "pytest",
+    "rich",
+    "watchfiles",
+    "pathspec",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+# Artículo VII — el núcleo queda SIN OTel como dep dura.
+# OTel es dep de test/dev (F.6.1 — decisión operador: 0 skips permitidos).
+[project.optional-dependencies]
+dev = [
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.20",
+    "pytest-timeout>=2.3",
+]
+commercial = ["keyring>=24.0.0", "sqlite-sync>=0.0.8"]
+
+[project.scripts]
+causadb = "causadb.cli.main:main"
+causadb-mcp = "causadb.mcp.server:main"
+
+[project.urls]
+Homepage = "https://causadb.dev"
+Documentation = "https://causadb.dev/docs"
+Source = "https://github.com/thebuilderpeligroso-netizen/causadb"
+Issues = "https://github.com/thebuilderpeligroso-netizen/causadb/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["causadb*"]
+
+[tool.setuptools]
+include_package_data = true
+
+[tool.setuptools.package-data]
+causadb = ["*.jsonc", "skills/**/SKILL.md"]

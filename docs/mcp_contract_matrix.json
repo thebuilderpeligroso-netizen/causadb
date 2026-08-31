@@ -1,0 +1,15 @@
+{
+  "contracts": [
+    {"client": "opencode", "contract_version": "v1", "format": "json", "canonical_path": "opencode.json|opencode.jsonc", "handshake_evidence": "validated in MCP onboarding tests", "status": "confirmed", "last_verified": "2026-08-12"},
+    {"client": "gemini-cli", "contract_version": "v1", "format": "json", "canonical_path": ".gemini/settings.json", "handshake_evidence": "validated in MCP onboarding tests", "status": "confirmed", "last_verified": "2026-08-12"},
+    {"client": "claude-code", "contract_version": "v1", "format": "json", "canonical_path": ".mcp.json", "handshake_evidence": "validated in MCP onboarding tests", "status": "confirmed", "last_verified": "2026-08-12"},
+    {"client": "codex-cli", "contract_version": "v1", "format": "toml", "canonical_path": ".codex/config.toml", "handshake_evidence": "validated in MCP onboarding tests", "status": "confirmed", "last_verified": "2026-08-12"},
+    {"client": "cursor", "contract_version": "v1", "format": "json", "canonical_path": ".cursor/mcp.json", "handshake_evidence": "validated in MCP onboarding tests", "status": "confirmed", "last_verified": "2026-08-12"},
+    {"client": "windsurf", "contract_version": "v1", "format": "json", "canonical_path": "~/.codeium/windsurf/mcp_config.json", "handshake_evidence": "validated by existing template and onboarding tests", "status": "confirmed", "last_verified": "2026-08-12"},
+    {"client": "aider", "contract_version": "v1", "format": "message", "canonical_path": "none", "handshake_evidence": "validated negative capability test", "status": "negative", "last_verified": "2026-08-12"},
+    {"client": "grok", "contract_version": "v1", "format": "none", "canonical_path": null, "handshake_evidence": "not validated", "status": "out_of_scope", "last_verified": "2026-08-12"},
+    {"client": "hermes", "contract_version": "v1", "format": "none", "canonical_path": null, "handshake_evidence": "not validated", "status": "out_of_scope", "last_verified": "2026-08-12"},
+    {"client": "openjarvis", "contract_version": "v1", "format": "none", "canonical_path": null, "handshake_evidence": "not validated", "status": "out_of_scope", "last_verified": "2026-08-12"},
+    {"client": "devin", "contract_version": "v1", "format": "none", "canonical_path": null, "handshake_evidence": "not validated", "status": "out_of_scope", "last_verified": "2026-08-12"}
+  ]
+}
