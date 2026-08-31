@@ -115,6 +115,38 @@ CausaDB no te obliga a cambiar de herramienta: **es CausaDB la que se adapta a t
 
 > **Lección de instalación:** la herramienta lee el ledger al que está conectado el proyecto. Si la historia vive en el proyecto principal, instalá CausaDB desde ahí (`causadb init` en esa carpeta) para que el agente audite la historia real — nunca la instales en una carpeta general vacía.
 
+### Coordinación Multi-Agente
+
+Cuando varios agentes trabajan sobre el mismo proyecto (Maker↔Checker, subagentes, equipos), CausaDB expone **dos anotadores compartidos** en `.causadb/coordination/`:
+
+- **`AUDIT_REPORT`** — escribe el Auditor/Checker. Estados: `BORRADOR` / `APROBADO` / `RECHAZADO` / `REQUIERE_CAMBIOS`.
+- **`ACTION_PLAN`** — escribe el Coder/Maker. Estados: solicitud `APROBAR` / `OBJETAR`.
+
+Se sobreescriben (el historial completo lo guarda el ledger vía `FILE_MODIFIED`). Se acceden con las tools MCP `shared_document_read` / `shared_document_write`.
+
+**Flujo típico:** Maker escribe su plan en `ACTION_PLAN` → Checker lee, verifica y escribe el veredicto en `AUDIT_REPORT` → Maker ejecuta o ajusta. La traza completa de la coordinación queda en el ledger.
+
+### Skills procedurales
+
+CausaDB incluye skills predefinidas que condensan patrones de uso de sus propias tools:
+
+| Skill | Qué hace | Disparador típico |
+|-------|----------|-------------------|
+| `state-reconstruction` | 9 patrones (P1–P9) para reconstruir estado desde el ledger | "¿Qué hizo el agente X?", "¿Por qué existe esta línea?", "Restaurar este archivo" |
+| `shared-workspace` | Coordinación multi-agente vía documentos compartidos | "Leer el plan de acción", "Escribir reporte de auditoría" |
+
+Se listan con `causadb_skill_list` (MCP) o `causadb distill`. Son 100% agnósticas — solo referencian tools de CausaDB, no dependen de ninguna herramienta de agente.
+
+### Documentación (canon)
+
+CausaDB incluye un **canon**: la doctrina mínima para que un agente (o un humano) interactúe correctamente con la memoria del proyecto — escalera de reconstrucción barato→caro, patrones de auditoría por evidencia (P1–P9) y reglas de gobernanza. Se lee con:
+
+```bash
+causadb canon          # CLI
+```
+
+o el resource MCP `causadb://canon`. Se referencia automáticamente en el `revive` y en el setup de cada agente.
+
 ### Dashboard web
 
 Visualización completa sin consola: línea de tiempo humanizada, búsqueda, trace visual de causalidad, botón de revive, export de auditoría y métricas de sesión.
@@ -175,13 +207,24 @@ Visualización completa sin consola: línea de tiempo humanizada, búsqueda, tra
 
 ## Estado del proyecto
 
-**En preparación para la primera release pública.** Roadmap y estado actual en `CAUSADB_STATE_AND_ROADMAP.md`. Validación pre-lanzamiento en `../CAUSADB_VALIDATION_CHECKLIST.md`.
+**En preparación para la primera release pública (v0.2.0-rc1).** Suite de ~2.135 tests, validación multi-plataforma en curso. Ver [releases](https://github.com/thebuilderpeligroso-netizen/causadb/releases) cuando estén publicados.
 
-> **Nota de transparencia:** el repositorio público de GitHub y los instaladores binarios todavía no están publicados. Forman parte del plan de lanzamiento. No usés links de "releases" de versiones anteriores del README — apuntan a un repo que aún no existe.
+> **Nota de transparencia:** este repositorio es la fuente oficial. La primera release pública (`v0.2.0-rc1`) aún no está taggeada — está en validación (incluida la prueba en Windows). El paquete pip `causadb` y los binarios standalone se publicarán junto con esa release.
 
 ## 📚 Documentación
 
 - [Guía de Usuario](docs/user_guide.md) — Primeros pasos, instalación, comandos útiles (español)
 - [Preguntas Frecuentes](docs/faq.md) — FAQ sobre privacidad, precios, errores comunes
 - [Solución de Problemas](docs/troubleshooting.md) — Errores típicos y cómo resolverlos
-- [Verificación de Firmas](docs/verify_signature.md) — Cosign keyless para binarios
+
+---
+
+## Limitaciones Conocidas
+
+Transparencia sobre los límites actuales del producto, en orden de impacto:
+
+1. **Atribución de identidad parcial (¿quién tocó qué?).** El ledger registra **qué** cambió siempre (vía harvester pasivo), y **quién** cuando el cambio pasa por un agente que firma su `session_id`. Pero los **borrados del filesystem watcher** (`source="harvester:filesystem"`) no llevan actor: el contenido borrado es irrecuperable y no se atribuye a nadie. La correlación `TOOL_CALLED ↔ FILE_MODIFIED` y la firma HMAC (`_attribution.py`) existen pero no están activadas en producción. Está en el roadmap como deuda #22.
+
+2. **`undo` frente a estados intermedios rotos.** `undo` restaura al último estado que difiere del contenido actual en disco (cruzando disco + ledger). Si el historial contiene un snapshot intermedio "roto" seguido de uno bueno, `undo` puede no elegir automáticamente el último realmente válido — no valida el contenido del código. Para esos casos, el [canon](docs/canon.md) documenta el ritual manual de restauración (patrón P3).
+
+3. **Windows en validación.** El soporte de Windows degrada a modo sin fork (subprocess). La validación en máquina real con la CI multi-plataforma está en curso antes de la primera release.
