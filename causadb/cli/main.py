@@ -16,6 +16,7 @@ import sys
 
 from causadb.cli._cmd_setup import cmd_setup  # F.1 setup
 from causadb.cli._cmd_init import cmd_init
+from causadb.cli._cmd_genesis import cmd_genesis  # F1.1 Génesis
 from causadb.cli._cmd_canon import cmd_canon
 from causadb.cli._cmd_chronicle import cmd_chronicle  # F.2 chronicle
 from causadb.cli._cmd_log import cmd_log
@@ -131,6 +132,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "Use this when multiple agents are installed (e.g. both "
                              "opencode and gemini-cli) and the heuristic picks the "
                              "wrong one.")
+    p_init.add_argument("--no-genesis", action="store_true",
+                        help="Skip the genesis prompt (onboarding for already-started projects). "
+                             "Use in CI / non-interactive to avoid blocking.")
     p_init.set_defaults(func=cmd_init)
 
     # canon — imprime la guía del agente (docs/canon.md), agnóstico a tool.
@@ -407,6 +411,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_harvest.add_argument("--daemon", action="store_true",
                            help="Run in background as a daemon (fork + PID file).")
     p_harvest.set_defaults(func=cmd_harvest)
+
+    # F1.1 — Génesis: onboarding one-shot para proyectos ya comenzados.
+    # Para proyectos SIN daemon previo corriendo (no implementa handoff de cursor).
+    p_genesis = sub.add_parser(
+        "genesis",
+        help="Genesis onboarding: import project history for an already-started project.",
+    )
+    p_genesis_sub = p_genesis.add_subparsers(dest="genesis_action")
+    p_genesis_import = p_genesis_sub.add_parser(
+        "import",
+        help="One-shot import of project history (git/filesystem/obsidian).",
+    )
+    p_genesis_import.add_argument(
+        "--source", default="--all",
+        help="Source to import: git, filesystem, obsidian, or --all (default).",
+    )
+    p_genesis_import.add_argument(
+        "--ledger", default=None,
+        help="Ledger path (auto-discover from .causadb/ if omitted).",
+    )
+    p_genesis_import.add_argument(
+        "--path", default=None,
+        help="Project/source path (default: current directory).",
+    )
+    p_genesis_import.set_defaults(func=cmd_genesis)
 
     # recover <session_id> [--tool <tool>] | --search <keyword>  [--ledger <path>]
     p_recover = sub.add_parser(

@@ -86,6 +86,12 @@ _BUILTIN_SPECS = [
     ("SESSION_SUMMARY", {"tool", "session_id", "turn_count", "summary_lines", "decisions", "errors", "files_touched", "tokens_used", "duration_s"}),
     ("API_ATTEMPT", {"hermes_session_id", "provider", "model", "mode", "status", "request_ref", "tokens_in", "tokens_out"}),
     ("RESTART_COMPLETED", {"mode", "unit_state", "timestamp", "systemctl_action", "systemctl_ok"}),
+    # F1.2 — Génesis: tipos de onboarding para proyectos ya comenzados.
+    # La marca `provenance` va en el PAYLOAD (dict libre, aditivo), no en el
+    # schema (evita bug BIT-CHR.35 P1). GENESIS_IMPORT NO se registra
+    # (decisión del auditor — se confía en provenance).
+    ("CODEBASE_ARCHITECTURE_SNAPSHOT", {"project_id", "generated_at", "nodes", "edges", "generator"}),
+    ("GENESIS_SUMMARY", {"project_id", "generated_at", "sources", "events_imported", "summary"}),
 ]
 
 for name, fields in _BUILTIN_SPECS:

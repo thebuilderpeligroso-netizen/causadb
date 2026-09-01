@@ -393,4 +393,4 @@ class TestReadVersion:
         version = _read_version()
         assert isinstance(version, str)
         assert len(version) > 0
-        assert version == "0.1.0", f"expected 0.1.0, got {version}"
+        assert version == "0.2.0", f"expected 0.2.0, got {version}"

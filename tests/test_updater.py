@@ -36,7 +36,7 @@ def _post(port, path, body):
 def test_current_version_exists():
     from causadb._updater import get_current_version
     version = get_current_version()
-    assert version == "0.1.0"
+    assert version == "0.2.0"
 
 
 def test_check_update_no_github(monkeypatch):

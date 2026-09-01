@@ -324,6 +324,38 @@ def cmd_init(args) -> Tuple[int, str]:
                 print('  ⚠ Could not download model. Make sure Ollama is running on port 11434.')
                 output["assistant_configured"] = False
 
+        # F3 — Génesis: onboarding para proyectos ya comenzados.
+        # Respeta el patrón existente `if sys.stdin.isatty()` para no bloquear
+        # CI. `--no-genesis` desactiva el prompt explícitamente.
+        genesis_requested = False
+        if not getattr(args, "no_genesis", False):
+            if sys.stdin.isatty():
+                try:
+                    answer = input(
+                        "¿Vas a usar CausaDB en un proyecto ya comenzado? (Y/N): "
+                    ).strip().lower()
+                    genesis_requested = answer in ("y", "yes")
+                except (EOFError, KeyboardInterrupt):
+                    genesis_requested = False
+            # stdin no-interactivo → no preguntar, no bloquear.
+        if genesis_requested:
+            try:
+                from causadb.cli._cmd_genesis import run_genesis_import
+                gres = run_genesis_import(
+                    ledger_path=result["ledger_path"],
+                    source="--all",
+                    source_path=workspace_path,
+                )
+                output["genesis"] = {
+                    "project_id": gres["project_id"],
+                    "sources": gres["sources"],
+                    "events_imported": gres["events_imported"],
+                    "codebase_generator": gres["codebase_generator"],
+                }
+            except Exception as e:
+                # Degradación suave: si no hay fuentes o falla, no bloquea init.
+                output["genesis_error"] = str(e)
+
         return (0, json.dumps(output, sort_keys=True))
     except (ValueError, FileExistsError) as e:
         return (1, json.dumps({"error": str(e), "error_type": type(e).__name__}))

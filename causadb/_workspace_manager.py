@@ -17,6 +17,7 @@ import datetime
 import json
 import os
 import shutil
+import uuid
 
 
 class WorkspaceManager:
@@ -81,6 +82,7 @@ class WorkspaceManager:
             "name": name,
             "ledger_path": init_result["ledger_path"],
             "created_at": datetime.datetime.now().isoformat(),
+            "project_id": str(uuid.uuid4()),
         }
         with open(self._config_path(name), "w") as f:
             json.dump(config, f, indent=2, sort_keys=True)

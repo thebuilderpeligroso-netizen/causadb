@@ -103,3 +103,83 @@ def test_governance_decision_status_changed_event_type_exists():
 def test_project_snapshot_event_type_exists():
     from causadb._event_types import EventType
     assert EventType.PROJECT_SNAPSHOT.value == "PROJECT_SNAPSHOT"
+
+
+# ---------------------------------------------------------------------------
+# F1.2 — tipos nuevos de Génesis (provenance en payload, sin tocar schema)
+# ---------------------------------------------------------------------------
+
+
+def test_codebase_architecture_snapshot_type_registered():
+    """F1.2: CODEBASE_ARCHITECTURE_SNAPSHOT resuelve, no degrada a OBSERVATION."""
+    from causadb._event_types import EventType
+    assert EventType("CODEBASE_ARCHITECTURE_SNAPSHOT").value == "CODEBASE_ARCHITECTURE_SNAPSHOT"
+
+
+def test_genesis_summary_type_registered():
+    """F1.2: GENESIS_SUMMARY resuelve, no degrada a OBSERVATION."""
+    from causadb._event_types import EventType
+    assert EventType("GENESIS_SUMMARY").value == "GENESIS_SUMMARY"
+
+
+def test_codebase_snapshot_event_roundtrip(tmp_path):
+    """F1.2: un evento CODEBASE_ARCHITECTURE_SNAPSHOT se escribe y lee."""
+    from types import MappingProxyType
+    from causadb._init import causadb_init
+    from causadb._ledger_writer import LedgerWriter
+    from causadb._ledger_reader import LedgerReader
+    from causadb._event_schema import CanonicalEvent
+    from causadb._event_types import EventType
+
+    ledger = causadb_init(str(tmp_path / "ws"))["ledger_path"]
+    writer = LedgerWriter(ledger)
+    ev = CanonicalEvent(
+        event_type=EventType("CODEBASE_ARCHITECTURE_SNAPSHOT"),
+        ctx_id="genesis",
+        source="causadb:genesis",
+        payload=MappingProxyType({
+            "project_id": "abc",
+            "generated_at": "2026-01-01T00:00:00Z",
+            "nodes": [],
+            "edges": [],
+            "generator": "ast",
+        }),
+    )
+    writer.append(ev)
+
+    events = list(LedgerReader(ledger).read_all())
+    snaps = [e for e in events if e.event_type.value == "CODEBASE_ARCHITECTURE_SNAPSHOT"]
+    assert len(snaps) == 1
+    assert snaps[0].payload["generator"] == "ast"
+    assert snaps[0].payload["project_id"] == "abc"
+
+
+def test_genesis_summary_event_roundtrip(tmp_path):
+    """F1.2: un evento GENESIS_SUMMARY se escribe y lee."""
+    from types import MappingProxyType
+    from causadb._init import causadb_init
+    from causadb._ledger_writer import LedgerWriter
+    from causadb._ledger_reader import LedgerReader
+    from causadb._event_schema import CanonicalEvent
+    from causadb._event_types import EventType
+
+    ledger = causadb_init(str(tmp_path / "ws"))["ledger_path"]
+    writer = LedgerWriter(ledger)
+    ev = CanonicalEvent(
+        event_type=EventType("GENESIS_SUMMARY"),
+        ctx_id="genesis",
+        source="causadb:genesis",
+        payload=MappingProxyType({
+            "project_id": "abc",
+            "generated_at": "2026-01-01T00:00:00Z",
+            "sources": {"git": 2},
+            "events_imported": 2,
+            "summary": "ok",
+        }),
+    )
+    writer.append(ev)
+
+    events = list(LedgerReader(ledger).read_all())
+    sums = [e for e in events if e.event_type.value == "GENESIS_SUMMARY"]
+    assert len(sums) == 1
+    assert sums[0].payload["events_imported"] == 2

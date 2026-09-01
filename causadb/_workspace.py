@@ -10,6 +10,7 @@ Artículo II: Thin wrapper over causadb_init() for workspace creation.
 import datetime
 import json
 import os
+import uuid
 from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
 
@@ -159,6 +160,7 @@ class CausaDBWorkspace:
     ocb_base_path: Optional[str] = None
     blob_store_enabled: bool = True
     custom_event_types: dict = field(default_factory=dict)
+    project_id: Optional[str] = None
 
     def __post_init__(self):
         if not os.path.isabs(self.ledger_path):
@@ -261,6 +263,7 @@ class WorkspaceManager:
             "ledger_path": ledger_path,
             "watch_dirs": watch_dirs or [project_path],
             "chronicle_path": chronicle_path,
+            "project_id": str(uuid.uuid4()),
         }
         if blob_store_enabled is not None:
             ws_kwargs["blob_store_enabled"] = blob_store_enabled

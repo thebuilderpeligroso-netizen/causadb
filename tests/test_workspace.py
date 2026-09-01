@@ -193,6 +193,48 @@ def test_init_honors_explicit_blob_store_false(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# F2 — project_id (Génesis)
+# ---------------------------------------------------------------------------
+
+
+def test_workspace_init_creates_valid_project_id(tmp_path):
+    """F2: init() escribe un project_id UUID válido en config.json."""
+    import uuid
+    project = tmp_path / "p"
+    WorkspaceManager.init(project)
+    config_path = os.path.join(project, ".causadb", "config.json")
+    with open(config_path) as f:
+        data = json.load(f)
+    pid = data["project_id"]
+    assert pid, "project_id no debe estar vacío"
+    uuid.UUID(pid)  # lanza ValueError si no es UUID válido
+
+
+def test_workspace_load_old_config_without_project_id(tmp_path):
+    """F2 retrocompat: un config viejo SIN project_id carga sin romper → None."""
+    config_path = tmp_path / "config.json"
+    with open(config_path, "w") as f:
+        json.dump({"ledger_path": str(tmp_path / "ledger.log"), "watch_dirs": []}, f)
+    loaded = WorkspaceManager.load(str(config_path))
+    assert loaded.project_id is None
+
+
+def test_workspace_manager_create_has_project_id(tmp_path):
+    """F2: _workspace_manager.create() escribe project_id en su config."""
+    import uuid
+    from causadb._workspace_manager import WorkspaceManager as MultiWM
+    root = tmp_path / "root"
+    wm = MultiWM(root_dir=str(root))
+    wm.create("proj")
+    config_path = os.path.join(root, "proj", ".causadb", "config.json")
+    with open(config_path) as f:
+        data = json.load(f)
+    pid = data["project_id"]
+    assert pid, "project_id no debe estar vacío"
+    uuid.UUID(pid)  # lanza ValueError si no es UUID válido
+
+
+# ---------------------------------------------------------------------------
 # Anti-teatro
 # ---------------------------------------------------------------------------
 
