@@ -82,7 +82,6 @@ Decisiones de diseño (documentadas para fases posteriores F.13.1.3+):
    estilos mixtos. ``writer_history`` ya normaliza vía
    ``_effective_writes`` (que normaliza en ``_causal_cone``).
 """
-import fcntl
 import hashlib
 import json
 import os
@@ -92,6 +91,7 @@ from typing import Dict, List, Optional
 from causadb._causal_cone import _writer_history
 from causadb._dag_schema import DAG_SCHEMA_VERSION, dag_to_dict, validate_dag
 from causadb._file_index import _normalize_rel_path
+from causadb._file_lock import lock_ex, lock_sh, unlock
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ def write_dag(dag: dict, path: str) -> None:
 
     # Asegurar que el lock file existe (crear si no, como _ledger_writer).
     if not os.path.exists(lock_path):
-        open(lock_path, "a").close()
+        open(lock_path, "a+b").close()
 
     # Computar el hash del DAG SIN el campo dag_hash (evitar recursión).
     dag_for_hash = {k: v for k, v in dag.items() if k != "dag_hash"}
@@ -261,15 +261,15 @@ def write_dag(dag: dict, path: str) -> None:
     payload = json.dumps(dag_with_hash, sort_keys=True)
 
     # File locking + escritura atómica (fsync).
-    with open(lock_path, "a") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    with open(lock_path, "a+b") as lock_file:
+        lock_ex(lock_file.fileno())
         try:
             with open(path, "w") as f:
                 f.write(payload)
                 f.flush()
                 os.fsync(f.fileno())
         finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            unlock(lock_file.fileno())
 
 
 # ---------------------------------------------------------------------------
@@ -324,20 +324,20 @@ def read_dag(path: str) -> Optional[dict]:
     # (caso: cache escrito a mano sin pasar por write_dag).
     if not os.path.exists(lock_path):
         try:
-            open(lock_path, "a").close()
+            open(lock_path, "a+b").close()
         except OSError:
             # Si no podemos crear el lock file, degradar suave.
             return None
 
     # 2. File locking + lectura. Degradación suave ante cualquier excepción.
     try:
-        with open(lock_path, "a") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+        with open(lock_path, "a+b") as lock_file:
+            lock_sh(lock_file.fileno())
             try:
                 with open(path, "r") as f:
                     raw = f.read()
             finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                unlock(lock_file.fileno())
     except (OSError, IOError):
         # flock timeout, permisos, etc. → degradar suave.
         return None

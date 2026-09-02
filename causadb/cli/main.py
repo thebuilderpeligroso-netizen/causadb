@@ -871,6 +871,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(args=None) -> int:
     """CLI entrypoint. Returns the exit code (does not call sys.exit directly)."""
+    # Fix portabilidad Windows: forzar UTF-8 en consolas cp1252 (emojis/unicode).
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass  # capsys/StringIO no tiene reconfigure (tests) — no-op en Linux
+
     # Install global excepthook to auto-capture unhandled exceptions
     try:
         from causadb._crash_reporter import save_global_excepthook

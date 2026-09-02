@@ -64,13 +64,14 @@ Decisiones de diseño:
    ``reason`` es metadata para auditoría.
 """
 
-import fcntl
 import hashlib
 import json
 import os
 import uuid
 from types import MappingProxyType
 from typing import Any, Dict, List, Optional
+
+from causadb._file_lock import lock_ex, lock_sh, unlock
 
 from causadb._config import CausaDBConfig
 from causadb._event_schema import CanonicalEvent, EventMetadata
@@ -360,7 +361,7 @@ def write_skills_cache(skills: list, cache_path: str) -> None:
     """
     lock_path = cache_path + ".lock"
     if not os.path.exists(lock_path):
-        open(lock_path, "a").close()
+        open(lock_path, "a+b").close()
 
     # Computar hash SIN el campo cache_hash (evitar recursión).
     cache_hash = _compute_cache_hash(skills)
@@ -371,8 +372,8 @@ def write_skills_cache(skills: list, cache_path: str) -> None:
     }
     payload = json.dumps(payload_dict, sort_keys=True)
 
-    with open(lock_path, "a") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    with open(lock_path, "a+b") as lock_file:
+        lock_ex(lock_file.fileno())
         try:
             # Asegurar que el directorio padre existe.
             parent = os.path.dirname(cache_path)
@@ -383,7 +384,7 @@ def write_skills_cache(skills: list, cache_path: str) -> None:
                 f.flush()
                 os.fsync(f.fileno())
         finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            unlock(lock_file.fileno())
 
 
 def read_skills_cache(cache_path: str) -> Optional[list]:
@@ -411,18 +412,18 @@ def read_skills_cache(cache_path: str) -> Optional[list]:
     lock_path = cache_path + ".lock"
     if not os.path.exists(lock_path):
         try:
-            open(lock_path, "a").close()
+            open(lock_path, "a+b").close()
         except OSError:
             return None
 
     try:
-        with open(lock_path, "a") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+        with open(lock_path, "a+b") as lock_file:
+            lock_sh(lock_file.fileno())
             try:
                 with open(cache_path, "r") as f:
                     raw = f.read()
             finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                unlock(lock_file.fileno())
     except (OSError, IOError):
         return None
 

@@ -303,7 +303,7 @@ def test_write_dag_uses_flock(tmp_path):
     dag = build_dag(events)
 
     dag_path = str(tmp_path / "dag.json")
-    with mock.patch("causadb._dag_cache.fcntl.flock") as mock_flock:
+    with mock.patch("causadb._file_lock.fcntl.flock") as mock_flock:
         write_dag(dag, dag_path)
 
     assert mock_flock.called, "fcntl.flock debe ser llamado por write_dag"
@@ -473,7 +473,7 @@ def test_anti_teatro_write_dag_no_flock(tmp_path, monkeypatch):
 
     # Primero verificar que la implementación real SÍ usa flock.
     dag_path_real = str(tmp_path / "dag_real.json")
-    with mock.patch("causadb._dag_cache.fcntl.flock") as mock_flock_real:
+    with mock.patch("causadb._file_lock.fcntl.flock") as mock_flock_real:
         write_dag(dag, dag_path_real)
     assert mock_flock_real.called, (
         "La implementación real de write_dag debe usar fcntl.flock — "
@@ -498,7 +498,7 @@ def test_anti_teatro_write_dag_no_flock(tmp_path, monkeypatch):
 
     # Con la mutación, flock NO se llama → el test #8 fallaría.
     dag_path_teatro = str(tmp_path / "dag_teatro.json")
-    with mock.patch("causadb._dag_cache.fcntl.flock") as mock_flock_teatro:
+    with mock.patch("causadb._file_lock.fcntl.flock") as mock_flock_teatro:
         dag_cache_mod.write_dag(dag, dag_path_teatro)
 
     assert not mock_flock_teatro.called, (
@@ -661,7 +661,7 @@ def test_read_dag_uses_flock_shared(tmp_path):
     dag_path = str(tmp_path / "dag.json")
     write_dag(dag, dag_path)
 
-    with mock.patch("causadb._dag_cache.fcntl.flock") as mock_flock:
+    with mock.patch("causadb._file_lock.fcntl.flock") as mock_flock:
         result = read_dag(dag_path)
 
     assert result is not None, "read_dag debe retornar el DAG en el caso válido"

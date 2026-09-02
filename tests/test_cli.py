@@ -15,6 +15,7 @@ in this file.
 import json
 import os
 import hashlib
+import sys
 
 import pytest
 
@@ -33,6 +34,61 @@ def _run(args, capsys):
     rc = main(args=args)
     captured = capsys.readouterr()
     return rc, captured.out
+
+
+# ---------------------------------------------------------------------------
+# Portabilidad Windows: fix encoding UTF-8 en main()
+# ---------------------------------------------------------------------------
+
+def test_main_reconfigures_streams_to_utf8(monkeypatch):
+    """main() fuerza UTF-8 en stdout/stderr (fix portabilidad Windows).
+
+    El emoji ⚡ del revive crashea en consolas cp1252 (UnicodeEncodeError).
+    main() debe llamar ``reconfigure(encoding="utf-8")`` sobre stdout y
+    stderr al arrancar. Sin el fix, ``calls`` queda vacío → este test
+    falla (RED).
+    """
+    calls = []
+
+    class _Stream:
+        def write(self, *a, **k):
+            return 0
+
+        def flush(self, *a, **k):
+            return None
+
+        def reconfigure(self, **kw):
+            calls.append(kw)
+
+    monkeypatch.setattr(sys, "stdout", _Stream())
+    monkeypatch.setattr(sys, "stderr", _Stream())
+
+    rc = main(args=[])
+    assert rc == 0
+    assert any(c.get("encoding") == "utf-8" for c in calls), (
+        "main() debe llamar reconfigure(encoding='utf-8') en stdout/stderr"
+    )
+
+
+def test_main_no_crash_without_reconfigure(monkeypatch):
+    """main() no lanza AttributeError si stdout/stderr no tienen reconfigure.
+
+    El try/except es OBLIGATORIO: capsys/StringIO y test doubles no tienen
+    ``reconfigure``. En esos casos debe ser no-op (no crash).
+    """
+    class _NoReconfigure:
+        def write(self, *a, **k):
+            return 0
+
+        def flush(self, *a, **k):
+            return None
+
+    monkeypatch.setattr(sys, "stdout", _NoReconfigure())
+    monkeypatch.setattr(sys, "stderr", _NoReconfigure())
+
+    # main() sin subcomando imprime help y retorna 0 — no debe crashear.
+    rc = main(args=[])
+    assert rc == 0
 
 
 # ---------------------------------------------------------------------------

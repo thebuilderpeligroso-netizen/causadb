@@ -15,7 +15,6 @@ the payload is NEVER consulted for snapshot detection (top-level-only
 gate, Artículo IX anti-teatro: payload-only snapshot references must not
 create index keys).
 """
-import fcntl
 import hashlib
 import json
 import os
@@ -24,6 +23,7 @@ from typing import Any, Dict, Optional
 
 from causadb._blob_store import BlobStore
 from causadb._ledger_reader import LedgerReader
+from causadb._file_lock import lock_ex, lock_sh, unlock
 
 FILE_INDEX_SCHEMA_VERSION = 1
 
@@ -70,15 +70,15 @@ def _save_file_index(index: Dict[str, Any], path: str) -> None:
     dirname = os.path.dirname(path)
     if dirname:
         os.makedirs(dirname, exist_ok=True)
-    with open(lock_path, "a") as lock_f:
-        fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+    with open(lock_path, "a+b") as lock_f:
+        lock_ex(lock_f.fileno())
         try:
             with open(path, "w") as f:
                 json.dump(index, f, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
         finally:
-            fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
+            unlock(lock_f.fileno())
 
 
 def _load_file_index(path: str) -> Optional[Dict[str, Any]]:
@@ -91,13 +91,13 @@ def _load_file_index(path: str) -> Optional[Dict[str, Any]]:
         return None
     lock_path = path + ".lock"
     try:
-        with open(lock_path, "a") as lock_f:
-            fcntl.flock(lock_f.fileno(), fcntl.LOCK_SH)
+        with open(lock_path, "a+b") as lock_f:
+            lock_sh(lock_f.fileno())
             try:
                 with open(path) as f:
                     index = json.load(f)
             finally:
-                fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
+                unlock(lock_f.fileno())
         if index.get("schema_version") != FILE_INDEX_SCHEMA_VERSION:
             return None
         if index.get("index_hash") != _compute_index_hash(index):

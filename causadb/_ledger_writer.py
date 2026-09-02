@@ -2,11 +2,11 @@ import hashlib
 import json
 import os
 import threading
-import fcntl
 import logging
 from typing import Optional
 from causadb._event_schema import CanonicalEvent
 from causadb._config import CausaDBConfig
+from causadb._file_lock import lock_ex, unlock
 
 
 def _snapshot_worker(queue, workspace_dir: str, prev_snapshot=None):
@@ -37,7 +37,7 @@ class LedgerWriter:
         self._file_lock_path = ledger_path + ".lock"
         self._last_hash_path = ledger_path + ".last_hash.json"
         if not os.path.exists(self._file_lock_path):
-            open(self._file_lock_path, "a").close()
+            open(self._file_lock_path, "a+b").close()
         self.last_hash = self._get_last_hash()
         # Auto-snapshot safeguard: once a snapshot times out (or the worker
         # returns None), auto-snapshotting is disabled permanently so
@@ -231,8 +231,8 @@ class LedgerWriter:
     def append(self, event: CanonicalEvent):
         entry = None
         with self._lock:
-            with open(self._file_lock_path, "a") as lock_file:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            with open(self._file_lock_path, "a+b") as lock_file:
+                lock_ex(lock_file.fileno())
                 try:
                     last_hash = self._get_last_hash()
                     
@@ -286,7 +286,7 @@ class LedgerWriter:
                     
                     self.last_hash = new_hash
                 finally:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    unlock(lock_file.fileno())
         
         # Lock released here, post-flush.
         if entry is not None and self.on_append is not None:

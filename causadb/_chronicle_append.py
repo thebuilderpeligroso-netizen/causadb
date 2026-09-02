@@ -13,10 +13,11 @@ alineación ledger ↔ .md la garantiza el ``bit_id`` compartido + el
 FAIL-CLOSED (Art. VIII): sin chronicle resoluble o con campos requeridos
 faltantes → ``ValueError``. El caller (CLI/MCP) decide cómo exponerlo.
 """
-import fcntl
 import os
 import re
 from typing import List, Optional
+
+from causadb._file_lock import lock_ex, unlock
 
 
 def render_entry(
@@ -163,8 +164,8 @@ def append_entry(
 
     # -- Check + append bajo flock (concurrencia) ---------------------------
     lock_path = path + ".lock"
-    with open(lock_path, "a") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    with open(lock_path, "a+b") as lock_file:
+        lock_ex(lock_file.fileno())
         try:
             content = ""
             if os.path.exists(path):
@@ -186,7 +187,7 @@ def append_entry(
                 f.flush()
                 os.fsync(f.fileno())
         finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            unlock(lock_file.fileno())
 
     # -- Rebuild del índice best-effort (nunca crashea el append) -----------
     try:
