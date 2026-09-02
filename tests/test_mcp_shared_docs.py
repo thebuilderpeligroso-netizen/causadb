@@ -11,6 +11,7 @@ import os
 
 from causadb.mcp.server import create_server
 from causadb._workspace import WorkspaceManager
+from tests.helpers._mcp_call import _call_tool, _error_message
 
 
 def _create_test_workspace(tmp_path):
@@ -18,13 +19,6 @@ def _create_test_workspace(tmp_path):
     project_dir = str(tmp_path / "test_project")
     result = WorkspaceManager.init(project_dir)
     return result["ledger_path"]
-
-
-def _call_tool(server, name, arguments):
-    async def _run():
-        content_blocks, structured = await server.call_tool(name, arguments)
-        return content_blocks, structured
-    return anyio.run(_run)
 
 
 def _text(content_blocks):
@@ -105,7 +99,7 @@ def test_shared_document_write_rejects_invalid_name(tmp_path):
     with pytest.raises(Exception) as exc_info:
         _call_tool(server, "shared_document_write", {"name": "INVALID", "content": "{}"})
 
-    assert "Nombre no permitido" in str(exc_info.value)
+    assert "Nombre no permitido" in _error_message(exc_info.value)
 
 
 def test_shared_document_read_rejects_invalid_name(tmp_path):
@@ -116,7 +110,7 @@ def test_shared_document_read_rejects_invalid_name(tmp_path):
     with pytest.raises(Exception) as exc_info:
         _call_tool(server, "shared_document_read", {"name": "INVALID"})
 
-    assert "Nombre no permitido" in str(exc_info.value)
+    assert "Nombre no permitido" in _error_message(exc_info.value)
 
 
 def test_shared_document_write_rejects_invalid_json(tmp_path):
@@ -127,7 +121,7 @@ def test_shared_document_write_rejects_invalid_json(tmp_path):
     with pytest.raises(Exception) as exc_info:
         _call_tool(server, "shared_document_write", {"name": "AUDIT_REPORT", "content": "not json"})
 
-    assert "JSON inválido" in str(exc_info.value)
+    assert "JSON inválido" in _error_message(exc_info.value)
 
 
 def test_shared_document_write_validates_tipo(tmp_path):
@@ -140,14 +134,14 @@ def test_shared_document_write_validates_tipo(tmp_path):
         _call_tool(server, "shared_document_write", {"name": "AUDIT_REPORT",
                    "content": json.dumps({"tipo": "ACTION_PLAN"})})
 
-    assert "Campo 'tipo' obligatorio" in str(exc_info.value)
+    assert "Campo 'tipo' obligatorio" in _error_message(exc_info.value)
 
     # tipo faltante
     with pytest.raises(Exception) as exc_info:
         _call_tool(server, "shared_document_write", {"name": "AUDIT_REPORT",
                    "content": json.dumps({"resumen": "test"})})
 
-    assert "Campo 'tipo' obligatorio" in str(exc_info.value)
+    assert "Campo 'tipo' obligatorio" in _error_message(exc_info.value)
 
 
 def test_shared_document_roundtrip(tmp_path):

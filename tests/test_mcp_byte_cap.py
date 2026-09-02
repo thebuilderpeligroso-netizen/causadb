@@ -28,6 +28,7 @@ import anyio
 from causadb._event_schema import CanonicalEvent
 from causadb._event_types import EventType
 from causadb._init import causadb_init
+from tests.helpers._mcp_call import _call_tool
 from causadb._ledger_writer import LedgerWriter
 from causadb.cli._cmd_revive import cmd_revive
 from causadb.mcp import _tools
@@ -37,13 +38,6 @@ from causadb.mcp.server import create_server
 # ---------------------------------------------------------------------------
 # Helpers (mismos patrones que test_mcp_query_cap.py / test_revive_r24.py)
 # ---------------------------------------------------------------------------
-
-def _call_tool(server, name, arguments):
-    async def _run():
-        content_blocks, structured = await server.call_tool(name, arguments)
-        return content_blocks, structured
-    return anyio.run(_run)
-
 
 def _text(content_blocks):
     return "".join(getattr(b, "text", str(b)) for b in content_blocks)

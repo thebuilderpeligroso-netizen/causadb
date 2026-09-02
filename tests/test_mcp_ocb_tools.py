@@ -38,6 +38,7 @@ from causadb.cli._cmd_revive import (
     _generate_revive_markdown,
     _generate_drill_down_instructions,
 )
+from tests.helpers._mcp_call import _call_tool
 
 
 # ---------------------------------------------------------------------------
@@ -78,13 +79,6 @@ def _write_partition(ocb_dir, ns: int, events):
         for ev in events:
             f.write(json.dumps(ev.to_dict(), sort_keys=True) + "\n")
     return fname
-
-
-def _call_tool(server, name, arguments):
-    async def _run():
-        content_blocks, structured = await server.call_tool(name, arguments)
-        return content_blocks, structured
-    return anyio.run(_run)
 
 
 def _text(content_blocks):

@@ -19,6 +19,7 @@ from causadb._event_types import EventType
 from causadb._ledger_writer import LedgerWriter
 from causadb._config import CausaDBConfig
 from causadb._snapshot import WorkspaceSnapshot
+from tests.helpers._mcp_call import _call_tool
 
 
 # ---------------------------------------------------------------------------
@@ -404,13 +405,11 @@ def test_mcp_why_tool_works(tmp_path):
 
     server = create_server()
 
-    async def _call():
-        return await server.call_tool("why", {
-            "file_path": "main.py",
-            "line_number": 1,
-            "ledger_path": ledger,
-        })
-    content_blocks, _ = anyio.run(_call)
+    content_blocks, _ = _call_tool(server, "why", {
+        "file_path": "main.py",
+        "line_number": 1,
+        "ledger_path": ledger,
+    })
     text = "".join(getattr(b, "text", str(b)) for b in content_blocks)
     result = json.loads(text)
 

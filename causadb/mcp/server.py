@@ -6,7 +6,7 @@ delegates to the existing nucleus (Article II).
 
 Article V (Memory Layer Separation): the server does NOT read the ledger at
 construction time. Reads are deferred to tool/resource call time.
-`create_server()` only constructs the FastMCP instance and registers tools
+`create_server()` only constructs the MCPBase instance and registers tools
 and resources; no I/O is performed on the ledger.
 
 BIT-14.7 (Auto-init): the server resolves the ledger path at startup using
@@ -34,7 +34,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.mcpserver import MCPServer as MCPBase  # mcp v2
+except ImportError:
+    from mcp.server.fastmcp import FastMCP as MCPBase      # mcp v1
 
 from causadb._config import CausaDBConfig
 from causadb._ledger_index import LedgerIndex
@@ -106,8 +109,8 @@ def _resolve_ledger() -> str:
 
 
 def create_server(config: Optional[CausaDBConfig] = None,
-                  config_ledger_path: Optional[str] = None) -> FastMCP:
-    """Construct a fresh FastMCP server with 19 tools + 3 resources.
+                  config_ledger_path: Optional[str] = None) -> MCPBase:
+    """Construct a fresh MCPBase server with 19 tools + 3 resources.
 
     Args:
         config: optional `CausaDBConfig`. If provided, its `ledger_path` is
@@ -117,10 +120,10 @@ def create_server(config: Optional[CausaDBConfig] = None,
             Used by tests to verify Article V (no ledger read at construction).
 
     Returns:
-        A `FastMCP` instance with exactly 19 tools and 3 resources registered.
+        A `MCPBase` instance with exactly 19 tools and 3 resources registered.
 
     Article V: this function performs NO I/O on the ledger. It only constructs
-    the FastMCP instance and registers tools/resources. The ledger is read
+    the MCPBase instance and registers tools/resources. The ledger is read
     only when a tool or resource is invoked.
     """
     # Resolve config WITHOUT touching the ledger. CausaDBConfig.__post_init__
@@ -142,7 +145,7 @@ def create_server(config: Optional[CausaDBConfig] = None,
             "the --no-auto-init flag to enable auto-init."
         )
 
-    mcp = FastMCP(
+    mcp = MCPBase(
         name="causadb",
         instructions="CausaDB causal ledger MCP server",
     )
@@ -242,7 +245,7 @@ def create_server(config: Optional[CausaDBConfig] = None,
 
         Raises:
             ValueError: on JSON parse error, schema validation failure, or
-            append failure (Fall-Closed — FastMCP converts to error response).
+            append failure (Fall-Closed — MCPBase converts to error response).
         """
         return _tools.causadb_log(event_json=event_json, ledger_path=_ledger(ledger_path))
 

@@ -28,19 +28,13 @@ from causadb._event_types import EventType
 from causadb._ledger_index import LedgerIndex, DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT
 from causadb._ledger_writer import LedgerWriter
 from causadb.mcp import _tools
+from tests.helpers._mcp_call import _call_tool
 from causadb.mcp.server import create_server
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _call_tool(server, name, arguments):
-    async def _run():
-        content_blocks, structured = await server.call_tool(name, arguments)
-        return content_blocks, structured
-    return anyio.run(_run)
-
 
 def _text(content_blocks):
     return "".join(getattr(b, "text", str(b)) for b in content_blocks)

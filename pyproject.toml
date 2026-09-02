@@ -62,7 +62,5 @@ where = ["."]
 include = ["causadb*"]
 
 [tool.setuptools]
-include_package_data = true
-
 [tool.setuptools.package-data]
 causadb = ["*.jsonc", "skills/**/SKILL.md"]

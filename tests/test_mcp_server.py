@@ -22,24 +22,12 @@ from causadb.mcp.server import create_server
 from causadb._ledger_writer import LedgerWriter
 from causadb._event_schema import CanonicalEvent
 from causadb._event_types import EventType
+from tests.helpers._mcp_call import _call_tool, _error_message
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _call_tool(server, name, arguments):
-    """Synchronous wrapper around `await server.call_tool(...)`.
-
-    Returns the structured dict (second element of the tuple returned by
-    FastMCP.call_tool). The structured dict has the raw return value under
-    `result`, which for our tools is a JSON string.
-    """
-    async def _run():
-        content_blocks, structured = await server.call_tool(name, arguments)
-        return content_blocks, structured
-    return anyio.run(_run)
-
 
 def _text(content_blocks):
     """Concatenate `.text` from all TextContent blocks into a single string."""
@@ -932,8 +920,9 @@ def test_tool_no_default_no_explicit_raises(tmp_path):
     """
     server = create_server()  # sin config_ledger_path
 
-    with pytest.raises(Exception, match="ledger path"):
+    with pytest.raises(Exception) as exc_info:
         _call_tool(server, "replay", {})
+    assert "ledger path" in _error_message(exc_info.value)
 
 
 def test_create_server_default_from_config(tmp_path):
@@ -1378,12 +1367,13 @@ def test_mcp_server_recover_requires_session_id_or_search(tmp_path):
     rompería el assert de excepción.
     """
     server = create_server()
-    with pytest.raises(Exception, match="session_id or search"):
+    with pytest.raises(Exception) as exc_info:
         _call_tool(server, "recover", {
             "ledger_path": str(tmp_path / "ledger.log"),
             "session_id": "",
             "search": "",
         })
+    assert "session_id or search" in _error_message(exc_info.value)
 
 
 def test_mcp_recover_lookup_conversation_ref_when_no_tool(tmp_path, monkeypatch):
