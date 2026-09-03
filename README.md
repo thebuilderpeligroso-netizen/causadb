@@ -211,6 +211,18 @@ Visualización completa sin consola: línea de tiempo humanizada, búsqueda, tra
 
 > **Nota de transparencia:** este repositorio es la fuente oficial. La primera release pública (`v0.2.0-rc1`) aún no está taggeada — está en validación (incluida la prueba en Windows). El paquete pip `causadb` y los binarios standalone se publicarán junto con esa release.
 
+## Génesis: empezar en un proyecto ya comenzado
+
+CausaDB funciona con la mayor fidelidad cuando se instala **desde el día 1** de un proyecto. Si lo instalás al comienzo, registra cada archivo, comando, decisión y razonamiento en el momento en que ocurren — la historia completa queda en el ledger.
+
+Si ya tenés un proyecto **con meses de historia** y recién ahora lo incorporás a CausaDB, el **Génesis** reconstruye el contexto que puede recuperar de lo que ya existe: la estructura del código, los commits de git, los archivos y las notas de Obsidian. Es una reconstrucción **robusta pero no completa**: lo que pasó en conversaciones de agentes o procesos que no dejaron rastro en disco no se puede recuperar (ese detalle está en la sección [Limitaciones Conocidas](#limitaciones-conocidas)).
+
+En criollo:
+
+> **Un proyecto puede sobrevivir tres meses sin CausaDB. Pero un proyecto con CausaDB instalado desde el día 1 no solo sobrevive — se vuelve más confiable que cualquier otro proyecto.**
+
+La memoria completa y verificable es el valor diferencial: cuanto antes lo instalás, más historia fiel y trazable acumulás.
+
 ## 📚 Documentación
 
 - [Guía de Usuario](docs/user_guide.md) — Primeros pasos, instalación, comandos útiles (español)
@@ -223,8 +235,10 @@ Visualización completa sin consola: línea de tiempo humanizada, búsqueda, tra
 
 Transparencia sobre los límites actuales del producto, en orden de impacto:
 
-1. **Atribución de identidad parcial (¿quién tocó qué?).** El ledger registra **qué** cambió siempre (vía harvester pasivo), y **quién** cuando el cambio pasa por un agente que firma su `session_id`. Pero los **borrados del filesystem watcher** (`source="harvester:filesystem"`) no llevan actor: el contenido borrado es irrecuperable y no se atribuye a nadie. La correlación `TOOL_CALLED ↔ FILE_MODIFIED` y la firma HMAC (`_attribution.py`) existen pero no están activadas en producción. Está en el roadmap como deuda #22.
+1. **Génesis reconstruye estructura, no conversaciones.** Si incorporás un proyecto con historia ya comenzada, el [Génesis](#génesis-empezar-en-un-proyecto-ya-comenzado) reconstruye la estructura (archivos, commits git, Obsidian) con alta fidelidad, pero **no puede recuperar conversaciones de agentes ni decisiones que solo viven en el storage privado de las sesiones pasadas**. La fidelidad completa solo se alcanza instalando CausaDB desde el día 1.
 
-2. **`undo` frente a estados intermedios rotos.** `undo` restaura al último estado que difiere del contenido actual en disco (cruzando disco + ledger). Si el historial contiene un snapshot intermedio "roto" seguido de uno bueno, `undo` puede no elegir automáticamente el último realmente válido — no valida el contenido del código. Para esos casos, el [canon](docs/canon.md) documenta el ritual manual de restauración (patrón P3).
+2. **Atribución de identidad parcial (¿quién tocó qué?).** El ledger registra **qué** cambió siempre (vía harvester pasivo), y **quién** cuando el cambio pasa por un agente que firma su `session_id`. Pero los **borrados del filesystem watcher** (`source="harvester:filesystem"`) no llevan actor: el contenido borrado es irrecuperable y no se atribuye a nadie. La correlación `TOOL_CALLED ↔ FILE_MODIFIED` y la firma HMAC (`_attribution.py`) existen pero no están activadas en producción. Está en el roadmap como deuda #22.
 
-3. **Windows en validación.** El soporte de Windows degrada a modo sin fork (subprocess). La validación en máquina real con la CI multi-plataforma está en curso antes de la primera release.
+3. **`undo` frente a estados intermedios rotos.** `undo` restaura al último estado que difiere del contenido actual en disco (cruzando disco + ledger). Si el historial contiene un snapshot intermedio "roto" seguido de uno bueno, `undo` puede no elegir automáticamente el último realmente válido — no valida el contenido del código. Para esos casos, el [canon](docs/canon.md) documenta el ritual manual de restauración (patrón P3).
+
+4. **Windows en validación.** El soporte de Windows degrada a modo sin fork (subprocess). La validación en máquina real con la CI multi-plataforma está en curso antes de la primera release.
