@@ -168,6 +168,18 @@ El ledger guarda el **qué** (eventos) y el **porqué estructurado** (GOVERNANCE
 
 **Convención de redacción de BITs:** el título de cada entrada del Chronicle (`## BIT-CHR.N — <Título>`) DEBE contener los términos clave con los que un futuro agente buscaría la funcionalidad o decisión (la superficie de búsqueda léxica).
 
+### P10. "¿Cómo se hizo esto? / reconstruir el flujo de una sesión sin excavar el filesystem"
+
+Cuando querés saber **cómo se hizo algo** (una feature, una landing, un artefacto) y sospechás que hubo sesiones de agentes involucradas, **no escaves el filesystem ni leas archivos del repo a ciegas**. El ledger ya tiene la traza completa de qué tools se llamaron, en qué sesión y con qué payload. Subí la escalera:
+
+1. **`causadb_recover(search="<keyword>")`** — localiza las sesiones candidatas por keyword (sobre los storyboards persistidos).
+2. **`causadb_query(event_type="TOOL_CALLED", text="<tool_name o keyword>")`** — confirma qué sesión llamó a la tool clave y extrae el payload/resultado de la acción (el `session_id` está en el payload).
+3. **`causadb_recover(session_id=<id>, tool="<agente>")`** — reconstruye la prosa completa de la sesión si necesitás el detalle paso a paso (prompts, reasoning, tool_calls en orden).
+
+**Anti-patrón:** leer archivos del filesystem, usar `find` para ubicar artefactos, o leer transcripts crudos cuando el ledger ya tiene la traza indexada. La escalera (§3) ordena revive → OCB → query → replay; para esto los niveles correctos son `query` (payload de la tool) y `recover` (prosa de la sesión), no el filesystem.
+
+*Caso real:* localizar cómo se hizo la landing de CausaDB. El primer intento excavó el repo (leyó `plume-grease.json`, exploró directorios) sin resultado — el archivo vivía fuera del watch_dirs. Con `causadb_query(event_type="TOOL_CALLED", text="open-design_create_project")` se confirmó en una llamada que la sesión era `ses_fe49de09...` (agente `build`) y se extrajo el payload de creación exacto (`causadb-landing-786b`, skill `frontend-design`, `skipDiscoveryBrief: true`). El mismo resultado, sin leer un solo archivo del repo.
+
 ---
 
 ## 5. Init agnóstico: sembrar el puntero en el agente correcto
@@ -303,7 +315,7 @@ Skills predefinidas que condensan patrones de uso de CausaDB. Se inyectan en el 
 
 | Skill | Qué hace | Disparador típico |
 |-------|----------|-------------------|
-| `state-reconstruction` | 9 patrones P1-P9 para reconstruir estado desde el ledger | "¿Qué hizo el agente X?", "¿Por qué existe esta línea?", "Restaurar este archivo" |
+| `state-reconstruction` | 10 patrones P1-P10 para reconstruir estado desde el ledger | "¿Qué hizo el agente X?", "¿Por qué existe esta línea?", "Restaurar este archivo" |
 | `shared-workspace` | Coordinación multi-agente via shared documents | "Leer el plan de acción", "Escribir reporte de auditoría" |
 
 Las skills son 100% agnósticas — solo referencian tools CausaDB, no dependen de ninguna herramienta de agente específica.
