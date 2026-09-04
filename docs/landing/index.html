@@ -638,14 +638,24 @@
     <div class="container">
     <div class="section__eyebrow">Memoria compartida</div>
     <h2 class="section__title">La memoria pertenece al proyecto, no al agente</h2>
-    <p class="section__lead">CausaDB habla MCP por HTTP de forma segura: cualquier agente compatible — hoy y los que vengan — puede consultar la misma historia.</p>
+    <p class="section__lead">Un canal de comunicación entre roles: un agente escribe, otro observa y opina. Sin llevarte prompts kilométricos ni infinitas iteraciones entre IAs.</p>
+    <div class="grid-cards">
+        <div class="card">
+            <h3>El ejecutor</h3>
+            <p>Trabaja en el proyecto, escribe su plan y ejecuta. Tiene acceso al código y al ledger.</p>
+        </div>
+        <div class="card">
+            <h3>El observador</h3>
+            <p>Un modelo de frontera (por ejemplo, ChatGPT) lee el plan por HTTP y te da su análisis — una segunda opinión que no interrumpe tu trabajo ni toca el código.</p>
+        </div>
+    </div>
     <ul class="grid-list">
+        <li>✓ División de responsabilidades: cada uno aporta su visión; el observador filtra lo que el ejecutor, con la carga de orquestador, no ve.</li>
+        <li>✓ Ahorro de tokens: no hay que reescribir el contexto — el observador consulta la memoria del proyecto.</li>
         <li>✓ Exposición por HTTP (streamable-http) con bind-safety: sin API key, solo tu máquina.</li>
-        <li>✓ Subconjunto de tools de lectura: revive, query, ocb_status, validate, sentinel y shared_document_read.</li>
-        <li>✓ Redacción de datos sensibles y exclusión de recursos que exponen el ledger completo.</li>
-        <li>✓ Coordinación compartida: un agente remoto lee el plan de acción que otro agente escribió (AUDIT_REPORT / ACTION_PLAN), sin reescribir la historia.</li>
+        <li>✓ Subconjunto de lectura: revive, query, ocb_status, validate, sentinel y shared_document_read.</li>
+        <li>✓ Observa y opina, no escribe: el observador lee el plan (AUDIT_REPORT / ACTION_PLAN) pero no puede alterarlo — la integridad de la coordinación queda protegida.</li>
         <li>✓ Agnóstico al cliente: OpenCode, Claude, Gemini CLI, y agentes remotos como ChatGPT.</li>
-        <li>✓ Abrí un proyecto con otro agente y preguntale qué pasó: consulta CausaDB, no un prompt kilométrico.</li>
     </ul>
     </div>
 </section>

@@ -112,6 +112,16 @@ Diseñado con seguridad por defecto:
 - **Redacción:** los datos sensibles se redactan antes de devolverse.
 - **Agnóstico al cliente:** la misma interfaz sirve para OpenCode, Claude, Gemini CLI y agentes remotos compatibles con MCP.
 
+#### Un canal de comunicación entre roles
+
+CausaDB es la memoria del proyecto: **las herramientas pueden cambiar, la memoria del proyecto sigue**. Eso habilita un patrón de colaboración que separa responsabilidades y ahorra tokens:
+
+- **El ejecutor** trabaja en el proyecto, escribe su plan y ejecuta (acceso al código y al ledger).
+- **El observador** (por ejemplo, un modelo de frontera como ChatGPT) **lee** el plan por HTTP y te da su análisis — una segunda opinión que no interrumpe tu trabajo ni toca el código.
+- **Observa y opina, no escribe**: el observador lee el plan de coordinación (`AUDIT_REPORT` / `ACTION_PLAN`) pero no puede alterarlo. La integridad de la coordinación queda protegida.
+
+Ventajas: **división de responsabilidades** (cada uno aporta su visión; el observador filtra lo que el ejecutor, con la carga de orquestador, no ve) y **ahorro de tokens** (no hay que reescribir el contexto — el observador consulta la memoria del proyecto, no un prompt kilométrico).
+
 ### Adaptable a cualquier agente — aunque no hable MCP
 
 CausaDB no te obliga a cambiar de herramienta: **es CausaDB la que se adapta a tus agentes**, no al revés.
