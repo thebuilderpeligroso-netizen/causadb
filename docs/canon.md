@@ -12,9 +12,9 @@ El ledger `ledger.log` es una secuencia de eventos ordenados, cada uno firmado c
 
 ---
 
-## 2. Las 19 tools MCP que tenés a mano
+## 2. Las tools MCP que tenés a mano
 
-Cualquier agente compatible con MCP se conecta con `causadb config mcp --auto`. Estas son las tools, agrupadas por cuándo usarlas:
+Cualquier agente compatible con MCP se conecta con `causadb config mcp --auto`. Son **21 tools + 4 recursos**, agrupadas por cuándo usarlas. (El MCP server también se puede exponer por **HTTP (streamable-http)** — ver el final de esta sección.)
 
 ### Escritura (registrar cosas nuevas)
 
@@ -66,6 +66,8 @@ Cualquier agente compatible con MCP se conecta con `causadb config mcp --auto`. 
 |------|--------------|
 | `shared_document_read(name)` | Leer `AUDIT_REPORT` o `ACTION_PLAN` (documentos fijos para coordinación Maker↔Checker). |
 | `shared_document_write(name, content)` | Escribir/actualizar `AUDIT_REPORT` o `ACTION_PLAN` (JSON válido, se sobreescribe). |
+
+**Exposición por HTTP:** el MCP server se puede servir por **streamable-http** (`causadb-mcp --transport streamable-http`) para que un agente remoto (en la nube) consulte la memoria. Por seguridad, en modo red solo se exponen las tools de lectura (`revive`, `query`, `ocb_status`, `validate`, `sentinel`, `shared_document_read`) con bind-safety (sin API key no escucha en interfaces no-loopback) y redacción de datos sensibles. Las tools de escritura (`log`, `shared_document_write`) y las que exponen el ledger completo (`replay`, `state`) quedan fuera.
 
 ---
 
@@ -279,7 +281,7 @@ CausaDB te ayuda a tener memoria del pasado. Cómo desarrollás en el presente e
 
 ## Apéndice: breve referencia
 
-- 19 tools MCP disponibles: enumeradas arriba.
+- 21 tools MCP + 4 recursos disponibles: enumeradas arriba. Exposición por HTTP (streamable-http) con subconjunto de lectura seguro.
 - 20 fuentes de harvest pasivo (`_harvest_source_*.py`): shell, git, browser, ActivityWatch, MT5, Jupyter, Obsidian, Zotero, filesystem, n8n, Freqtrade, Cursor, Windsurf, opencode, Claude, Gemini, Codex, Hermes, OpenJarvis, Grok. TradingView via adapter webhook (`adapters/tradingview/`), no pasivo.
 - Documentación operational completa: `docs/user_guide.md`, `docs/faq.md`, `docs/troubleshooting.md` (específica para CLI, no para canon).
 - Chronicle del proyecto donde laburás: ver `CAUSADB_CHRONICLE.md` en el root del repo para BIT-entries históricos. Cada BIT nuevo debe incluir el bloque `**Prosa de Sesión:**` (ver Art. II).
@@ -319,3 +321,7 @@ Skills predefinidas que condensan patrones de uso de CausaDB. Se inyectan en el 
 | `shared-workspace` | Coordinación multi-agente via shared documents | "Leer el plan de acción", "Escribir reporte de auditoría" |
 
 Las skills son 100% agnósticas — solo referencian tools CausaDB, no dependen de ninguna herramienta de agente específica.
+
+---
+
+*Última actualización: 04/09/2026*

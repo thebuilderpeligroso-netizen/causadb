@@ -82,3 +82,7 @@ causadb telemetry off
 
 **La API REST no responde**
 → El daemon no está corriendo. Corré `causadb serve start`.
+
+---
+
+*Ultima actualizacion: 04/09/2026*

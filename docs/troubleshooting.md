@@ -129,3 +129,7 @@ Si es un error legítimo, restaurá desde backup. Para resetear el workspace, cr
 pip install watchdog
 causadb watch start --daemon
 ```
+
+---
+
+*Ultima actualizacion: 04/09/2026*

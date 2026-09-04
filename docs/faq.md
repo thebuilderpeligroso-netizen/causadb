@@ -59,7 +59,7 @@ No. Los comandos básicos son simples. Para funciones avanzadas (consultas perso
 Muy poco. Un evento típico son ~500 bytes. Una sesión intensiva de 8 horas genera ~1-2 MB. Está diseñado para ser liviano.
 
 ## ¿CausaDB tiene API?
-Sí. Expone un MCP server y una API REST en `http://127.0.0.1:7457`.
+Sí. Expone un **MCP server** (21 tools + 4 recursos), una **API REST** en `http://127.0.0.1:7457`, y puede exponer el MCP por **HTTP (streamable-http)** para agentes remotos, con subconjunto de lectura seguro y bind-safety (sin API key solo escucha en tu máquina).
 
 ## ¿Qué es el Score?
 Un número del 0 al 100 que mide eficiencia de la sesión. Combina:
@@ -72,3 +72,7 @@ Simplemente crea un nuevo directorio, entra en él y corre `causadb init`. No ex
 
 ## ¿CausaDB es open source?
 Sí. El código está en [github.com/causadb/causadb](https://github.com/causadb/causadb). Licencia MIT.
+
+---
+
+*Ultima actualizacion: 04/09/2026*

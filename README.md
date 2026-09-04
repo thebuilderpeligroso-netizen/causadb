@@ -74,7 +74,7 @@ causadb watch stop                   # genera score + skills automáticamente
 
 ### Integración con agentes (MCP)
 
-CausaDB expone un **MCP server con 19 tools** (incluye `recover` para reconstruir el storyboard completo de una sesión desde la fuente cruda) que cualquier agente compatible invoca en 1 segundo:
+CausaDB expone un **MCP server con 21 tools + 4 recursos** (incluye `recover` para reconstruir el storyboard completo de una sesión desde la fuente cruda) que cualquier agente compatible invoca en 1 segundo:
 
 ```bash
 causadb opencode-config --project /mi/proyecto
@@ -96,6 +96,21 @@ Esto genera `causadb.opencode.jsonc`. Agregalo a tu `opencode.jsonc`:
   }
 }
 ```
+
+#### Exponer el MCP por HTTP (agentes remotos)
+
+Además del transporte local (stdio), el MCP server se puede exponer por **HTTP (streamable-http)** para que un agente remoto (por ejemplo, en la nube) consulte la memoria del proyecto de forma segura:
+
+```bash
+causadb-mcp --transport streamable-http --host 127.0.0.1 --port 8000 --ledger /mi/proyecto/.causadb/ledger.log
+```
+
+Diseñado con seguridad por defecto:
+- **Bind-safety:** sin API key configurada (`CAUSADB_MCP_API_KEY`), se niega a escuchar en interfaces no-loopback. Sin key, solo tu máquina.
+- **Subconjunto de lectura:** expone solo `revive`, `query`, `ocb_status`, `validate`, `sentinel` y `shared_document_read` — no las tools de escritura (`log`, `shared_document_write`) ni las que exponen todo el contenido (`replay`, `state`).
+- **Coordinación agnóstica:** un agente remoto puede leer el plan de coordinación (`AUDIT_REPORT` / `ACTION_PLAN`) que otro agente escribió en tu máquina — la memoria de coordinación pertenece al proyecto, no al agente.
+- **Redacción:** los datos sensibles se redactan antes de devolverse.
+- **Agnóstico al cliente:** la misma interfaz sirve para OpenCode, Claude, Gemini CLI y agentes remotos compatibles con MCP.
 
 ### Adaptable a cualquier agente — aunque no hable MCP
 
@@ -242,3 +257,7 @@ Transparencia sobre los límites actuales del producto, en orden de impacto:
 3. **`undo` frente a estados intermedios rotos.** `undo` restaura al último estado que difiere del contenido actual en disco (cruzando disco + ledger). Si el historial contiene un snapshot intermedio "roto" seguido de uno bueno, `undo` puede no elegir automáticamente el último realmente válido — no valida el contenido del código. Para esos casos, el [canon](docs/canon.md) documenta el ritual manual de restauración (patrón P3).
 
 4. **Windows en validación.** El soporte de Windows degrada a modo sin fork (subprocess). La validación en máquina real con la CI multi-plataforma está en curso antes de la primera release.
+
+---
+
+*Última actualización: 04/09/2026*
