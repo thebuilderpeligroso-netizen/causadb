@@ -641,8 +641,9 @@
     <p class="section__lead">CausaDB habla MCP por HTTP de forma segura: cualquier agente compatible — hoy y los que vengan — puede consultar la misma historia.</p>
     <ul class="grid-list">
         <li>✓ Exposición por HTTP (streamable-http) con bind-safety: sin API key, solo tu máquina.</li>
-        <li>✓ Subconjunto de tools de lectura: revive, query, ocb_status, validate, sentinel.</li>
+        <li>✓ Subconjunto de tools de lectura: revive, query, ocb_status, validate, sentinel y shared_document_read.</li>
         <li>✓ Redacción de datos sensibles y exclusión de recursos que exponen el ledger completo.</li>
+        <li>✓ Coordinación compartida: un agente remoto lee el plan de acción que otro agente escribió (AUDIT_REPORT / ACTION_PLAN), sin reescribir la historia.</li>
         <li>✓ Agnóstico al cliente: OpenCode, Claude, Gemini CLI, y agentes remotos como ChatGPT.</li>
         <li>✓ Abrí un proyecto con otro agente y preguntale qué pasó: consulta CausaDB, no un prompt kilométrico.</li>
     </ul>
