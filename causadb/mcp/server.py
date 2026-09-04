@@ -780,7 +780,14 @@ mcp = None
 # ---------------------------------------------------------------------------
 
 # Tools that remain exposed in network mode (read-only, safe).
-HTTP_SAFE_TOOLS = {"revive", "query", "ocb_status", "validate", "sentinel"}
+# shared_document_read is the coordination read tool (multi-agent
+# coordination): a remote agent can read the AUDIT_REPORT/ACTION_PLAN that
+# another agent wrote. shared_document_write stays excluded (write is the
+# integrity boundary).
+HTTP_SAFE_TOOLS = {
+    "revive", "query", "ocb_status", "validate", "sentinel",
+    "shared_document_read",
+}
 
 # Resources that remain exposed in network mode. causadb://events and
 # causadb://state dump the whole ledger and are excluded (see
@@ -913,7 +920,7 @@ async def _apply_http_security(server, config) -> dict:
     """
     tools = await _apply_http_tool_subset(server)
     resources = _apply_http_resource_subset(server)
-    for name in ("query", "revive"):
+    for name in ("query", "revive", "shared_document_read"):
         _wrap_tool_with_redaction(server, name, config)
     return {"tools": tools, "resources": resources}
 

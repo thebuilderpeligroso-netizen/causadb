@@ -8,8 +8,9 @@ Security invariants tested here (all fail-closed, Art. IX):
   1. Bind-safety: a non-loopback host WITHOUT an API key must refuse to start
      (SystemExit). A loopback host is always allowed.
   2. Tool subset: in network mode only the safe read-only tools remain
-     {revive, query, ocb_status, validate, sentinel}; all write/sensitive
-     tools (log, replay, recover, shared_document_write, …) are removed.
+     {revive, query, ocb_status, validate, sentinel, shared_document_read};
+     all write/sensitive tools (log, replay, recover, shared_document_write,
+     …) are removed.
   3. Explicit ledger: network mode requires an explicit ledger (--ledger or
      CAUSADB_LEDGER_PATH); without it the server refuses to start.
   4. Redaction: query/revive outputs are redacted with `redact_payload`
@@ -87,7 +88,8 @@ def test_bind_safety_loopback_ok_without_key():
 
 def test_http_tool_subset_returns_only_safe_tools():
     """The subset function returns exactly {revive, query, ocb_status,
-    validate, sentinel} and removes every write/sensitive tool.
+    validate, sentinel, shared_document_read} and removes every
+    write/sensitive tool.
 
     Anti-teatro: a stub that keeps `log`/`replay`/`recover` would fail the
     exact-set assertion AND the post-removal tool list assertion.
@@ -106,10 +108,19 @@ def test_http_tool_subset_returns_only_safe_tools():
     assert names == HTTP_SAFE_TOOLS, (
         f"server must expose ONLY safe tools, got {sorted(names)}"
     )
+    # shared_document_read is the coordination read tool: it MUST be exposed
+    # in network mode (multi-agent coordination), while shared_document_write
+    # stays excluded (write = integrity boundary).
+    assert "shared_document_read" in names, (
+        "shared_document_read must be exposed in network mode"
+    )
+    assert "shared_document_write" not in names, (
+        "shared_document_write must NOT be exposed in network mode"
+    )
     for removed in ("log", "replay", "recover", "shared_document_write",
                     "log_decision", "chronicle_append", "ocb_load_partition",
                     "feedback", "sandbox", "stream", "impact", "why", "trace",
-                    "score", "skill_list", "shared_document_read"):
+                    "score", "skill_list"):
         assert removed not in names, f"write/sensitive tool {removed!r} still exposed"
 
 
