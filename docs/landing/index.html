@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CausaDB — Dale memoria a tu agente</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-bg: #0E0F11;
+            --color-surface: #1F2125;
+            --color-border: rgba(255, 255, 255, 0.08);
+            --color-accent: #5E6AD2;
+            --color-text-primary: #F7F7F7;
+            --color-text-secondary: #B4B4B8;
+            --color-text-tertiary: #6E6E73;
+
+            --font-family: 'Inter', sans-serif;
+            --line-height-base: 1.5;
+            --spacing-base: 4px;
+            --max-width-container: 1120px;
+
+            --typography-h1: clamp(48px, 5vw, 72px);
+            --typography-h2: 36px;
+            --typography-body: 16px;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--color-bg);
+            background-image:
+                radial-gradient(900px 480px at 75% -5%, rgba(94, 106, 210, 0.10), transparent 60%),
+                radial-gradient(800px 420px at 15% 108%, rgba(94, 106, 210, 0.06), transparent 55%);
+            background-repeat: no-repeat;
+            color: var(--color-text-primary);
+            margin: 0;
+            padding: 0;
+            line-height: var(--line-height-base);
+            scroll-behavior: smooth;
+        }
+
+        .container {
+            max-width: var(--max-width-container);
+            margin: 0 auto;
+            padding: 0 calc(var(--spacing-base) * 4);
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            padding: var(--spacing-base) calc(var(--spacing-base) * 4);
+            z-index: 1000;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        nav .logo {
+            font-weight: bold;
+            color: var(--color-text-primary);
+            display: flex;
+            align-items: center;
+            gap: calc(var(--spacing-base) * 2);
+        }
+
+        .logo__mark {
+            display: block;
+            flex-shrink: 0;
+        }
+
+        .logo__word {
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: -0.01em;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+        }
+
+        nav ul li {
+            margin-left: calc(var(--spacing-base) * 4);
+        }
+
+        nav a {
+            color: var(--color-text-primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: calc(var(--spacing-base) * 20) 0 calc(var(--spacing-base) * 12);
+            text-align: center;
+            max-width: 760px;
+            margin: 0 auto;
+        }
+
+        .hero__eyebrow {
+            font-size: 14px;
+            letter-spacing: 2px;
+            color: var(--color-accent);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .hero__title {
+            font-size: var(--typography-h1);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-top: calc(var(--spacing-base) * 4);
+            max-width: 720px;
+        }
+
+        .hero__subtitle {
+            font-size: 18px;
+            line-height: 1.6;
+            color: var(--color-text-secondary);
+            margin-top: calc(var(--spacing-base) * 4);
+            max-width: 640px;
+        }
+
+        .hero__cta {
+            display: inline-block;
+            padding: calc(var(--spacing-base) * 2) calc(var(--spacing-base) * 4);
+            margin-top: calc(var(--spacing-base) * 4);
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--color-text-primary);
+        }
+
+        .hero__cta--primary {
+            background-color: var(--color-accent);
+        }
+
+        .hero__cta--secondary {
+            border: 1px solid var(--color-border);
+        }
+
+        .hero__muted {
+            font-size: 15px;
+            color: var(--color-text-secondary);
+            margin-top: calc(var(--spacing-base) * 4);
+            margin-bottom: 0;
+        }
+
+        section {
+            padding: calc(var(--spacing-base) * 16) 0;
+            text-align: center;
+        }
+
+        section.eyebrow {
+            font-size: 14px;
+            letter-spacing: 2px;
+            color: var(--color-accent);
+            text-transform: uppercase;
+            margin-bottom: calc(var(--spacing-base) * 2);
+        }
+
+        h2 {
+            font-size: var(--typography-h2);
+            margin-top: 0;
+        }
+
+        p {
+            font-size: var(--typography-body);
+            color: var(--color-text-secondary);
+            line-height: var(--line-height-base);
+        }
+
+        .section__eyebrow,
+        .section__title,
+        .section__lead {
+            text-align: center;
+        }
+
+        .section__eyebrow {
+            font-size: 14px;
+            letter-spacing: 2px;
+            color: var(--color-accent);
+            text-transform: uppercase;
+            margin-bottom: calc(var(--spacing-base) * 2);
+        }
+
+        .section__lead {
+            max-width: 760px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .card {
+            text-align: left;
+        }
+
+        .grid__item {
+            text-align: left;
+        }
+
+.card {
+            background-color: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 12px;
+            padding: calc(var(--spacing-base) * 8);
+            transition: border-color 0.2s ease-in-out;
+            text-align: left;
+        }
+
+        .card:hover {
+            border-color: var(--color-accent);
+        }
+
+        .grid-2col {
+            display: grid;
+            gap: calc(var(--spacing-base) * 10);
+            grid-template-columns: repeat(2, 1fr);
+            margin-top: calc(var(--spacing-base) * 8);
+        }
+
+        .grid-3col {
+            display: grid;
+            gap: calc(var(--spacing-base) * 10);
+            grid-template-columns: repeat(3, 1fr);
+            margin-top: calc(var(--spacing-base) * 8);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: calc(var(--spacing-base) * 8);
+        }
+
+        th, td {
+            padding: calc(var(--spacing-base) * 6);
+            text-align: left;
+            border-bottom: 1px solid var(--color-border);
+            font-size: 15px;
+        }
+
+        thead th {
+            color: var(--color-text-secondary);
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 0.02em;
+        }
+
+        td:first-child {
+            color: var(--color-text-primary);
+            font-weight: 500;
+        }
+
+        .compare__highlight {
+            border-left: 2px solid var(--color-accent);
+            border-right: 2px solid var(--color-accent);
+            background-color: rgba(94, 106, 210, 0.06);
+            color: var(--color-text-primary);
+        }
+
+        thead .compare__highlight {
+            color: var(--color-accent);
+        }
+
+        .steps-list {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .steps-list li {
+            position: relative;
+            margin-bottom: calc(var(--spacing-base) * 4);
+        }
+
+        .steps-list li::before {
+            content: '';
+            position: absolute;
+            left: -calc(var(--spacing-base) * 4);
+            top: 50%;
+            transform: translateY(-50%);
+            width: calc(var(--spacing-base) * 2);
+            height: calc(var(--spacing-base) * 2);
+            background-color: var(--color-accent);
+            border-radius: 50%;
+        }
+
+        .steps-list li:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            left: -calc(var(--spacing-base) * 3);
+            top: calc(50% + calc(var(--spacing-base) * 2));
+            width: 1px;
+            height: calc(100% - calc(var(--spacing-base) * 4));
+            background-color: var(--color-border);
+        }
+
+        .features-list {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .features-list li {
+            display: flex;
+            align-items: center;
+            margin-bottom: calc(var(--spacing-base) * 2);
+        }
+
+        .features-list li::before {
+            content: '';
+            width: calc(var(--spacing-base) * 2);
+            height: calc(var(--spacing-base) * 2);
+            background-color: var(--color-accent);
+            border-radius: 50%;
+            margin-right: calc(var(--spacing-base) * 2);
+        }
+
+        .grid-list {
+            list-style: none;
+            padding: 0;
+            margin: calc(var(--spacing-base) * 8) auto 0;
+            max-width: 760px;
+            text-align: left;
+            display: grid;
+            gap: calc(var(--spacing-base) * 3);
+        }
+
+        .grid-list li {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--color-text-secondary);
+            display: flex;
+            align-items: flex-start;
+            gap: calc(var(--spacing-base) * 3);
+        }
+
+        .grid-list li::before {
+            content: '✓';
+            color: var(--color-accent);
+            font-weight: 700;
+            font-size: 17px;
+            line-height: 1.3;
+            flex-shrink: 0;
+        }
+
+        footer {
+            padding: calc(var(--spacing-base) * 8) 0;
+            color: var(--color-text-secondary);
+            text-align: center;
+            border-top: 1px solid var(--color-border);
+        }
+
+        @media (max-width: 768px) {
+            .hero__title {
+                font-size: clamp(32px, 4vw, 48px);
+            }
+        }
+
+        @media (max-width: 480px) {
+            nav ul {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            nav ul li {
+                margin-left: 0;
+                margin-top: calc(var(--spacing-base) * 2);
+            }
+        }
+
+        .fade-in {
+            opacity: 0;
+            animation: fadeIn 1s forwards;
+        }
+
+        .hl {
+            color: var(--color-accent);
+            font-weight: 600;
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body class="fade-in">
+    <nav>
+        <div class="container">
+            <div class="logo">
+                <svg class="logo__mark" viewBox="0 0 48 48" width="30" height="30" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CausaDB — polígrafo: registro continuo de lo que se hace">
+                    <rect x="3" y="15" width="42" height="18" rx="6" fill="#1F2125" stroke="rgba(255,255,255,0.2)" stroke-width="1.6"/>
+                    <rect x="7" y="21" width="34" height="6" rx="3" fill="#F7F7F7"/>
+                    <path d="M9 24 C 13 21.5, 16 26.5, 20 24 C 24 21.5, 27 26.5, 31 24 C 34 22, 36 24.5, 39 24" stroke="#5E6AD2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <path d="M26.5 17 L28 20" stroke="#5E6AD2" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="28" cy="20.6" r="1.5" fill="#5E6AD2"/>
+                </svg>
+                <span class="logo__word">CausaDB</span>
+            </div>
+            <ul>
+                <li><a href="#story">La historia</a></li>
+                <li><a href="#proof">La prueba</a></li>
+                <li><a href="#thesis">La tesis</a></li>
+                <li><a href="#how">Cómo funciona</a></li>
+                <li><a href="#differentiators">Diferenciadores</a></li>
+                <li><a href="#agents">Agentes externos</a></li>
+                <li><a href="#" class="hero__cta hero__cta--secondary">Comenzar</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- SECTION: HERO -->
+<section id="hero" class="hero">
+    <div class="container">
+        <div class="hero__eyebrow">Memoria verificable para agentes de IA</div>
+        <h1 class="hero__title">Dale memoria a tu agente en el proyecto que estás trabajando</h1>
+        <p class="hero__subtitle">Sabés qué hizo, cómo lo hizo y hasta qué pensó para hacerlo. Sin reconstruir meses de trabajo a mano.</p>
+        <a href="#" class="hero__cta hero__cta--primary">Comenzar con CausaDB</a>
+        <a href="#" class="hero__cta hero__cta--secondary">Ver cómo funciona</a>
+        <p class="hero__muted">Todo local y offline. Sin nube, sin subir tus datos.</p>
+    </div>
+</section>
+
+<section id="story" class="eyebrow section story">
+    <div class="container">
+    <h2 class="section__eyebrow">La historia</h2>
+    <h3 class="section__title">Estaba trabajando de Uber y me hice un planteo que no me largaba.</h3>
+    <div class="story__prose" style="max-width: 700px; margin: 0 auto; text-align: left;">
+        <p><span class="hl">No estaba conforme con mi vida:</span> la paga era poca para las horas que le metía, mi vida social en segundo plano — hasta nula, había vuelto a vivir en la casa de mis padres y no conseguía otro trabajo. Tenía mucho tiempo libre para pensar, entre viaje y viaje.</p>
+        <p>Y me pregunté qué me gustaba hacer. Qué podía hacer durante horas sin que se sintiera como una obligación, sino porque me gustaba. Llegué a la conclusión de que era estar en la computadora. Algo que había dejado hace mucho. Y descubrí que se podía hacer dinero de esa manera.</p>
+        <p>Empecé con un curso de productos digitales: "Hacelos con inteligencia artificial, ella hace todo por vos, es una herramienta fantástica". Me di cuenta de que la tecnología había avanzado y yo ya no era tan rápido con el teclado. Tenía mucho que aprender.</p>
+        <p>Empecé con unos PDF para vender. Me salió una app sin backend, de casualidad. Y empecé a percibir que podía hacer mucho más sin tener tanto conocimiento. El conocimiento ya venía con la IA — o eso creía.</p>
+        <p>Entonces me embarqué en algo más ambicioso. Estaban de moda los chatbots, pero no había nada personalizado. Intenté con eso. Y cuando le faltaba poco para que la probaran, me di un golpazo. Fue muy duro: descubrí que mi proyecto estaba roto por todos lados. Dos días de frustración sin querer tocar un teclado. Impotencia y enojo, culpando primero a la IA. "¿Por qué no me avisó? ¿Por qué no se dio cuenta, si tenía la documentación?" Pero no me di por vencido.</p>
+<p><span class="hl">La IA es muy buena como herramienta, pero como toda herramienta, hay que saber utilizarla.</span></p>
+<p>Le empecé a dar reglas, porque las sigue. Empecé a ser más estructurado, para equivocarme menos. Pero la falencia más grande, la más difícil de cubrir, era mi falta de memoria.</p>
+        <p>Y ahí lo vi claro: si mejoraba la memoria de la inteligencia artificial, ella iba a poder cubrir mi falta de memoria.</p>
+        <p>Así que decidí cubrir ese aspecto. <span class="hl">Darle memoria.</span></p>
+        <p>Así nació lo que hoy construí: CausaDB, construido con CausaDB. Es el producto al que tenés acceso ahora, para conseguir la ventaja que yo no tuve en ese primer proyecto ambicioso en el que me había embarcado para comenzar este viaje.</p>
+        <p>Arranqué por el dinero, no te lo voy a negar. Pero hoy lo que me mueve es otra cosa: que tu proyecto sea más sano que el mío. Que no descubras el tuyo roto por todos lados a último momento, ni pases dos días sin querer tocar un teclado. Si te ahorro un dolor de cabeza, esto ya valió la pena.</p>
+        <p><span class="hl">¿No me crees? Vení, te muestro.</span></p>
+    </div>
+    </div>
+</section>
+
+    <!-- SECTION: PROOF -->
+<section id="proof" class="section">
+    <div class="container">
+    <div class="section__eyebrow">La prueba está en el ledger</div>
+    <h2 class="section__title">Casos reales. Con fechas. Con evidencia.</h2>
+    <p class="section__lead">Cuatro momentos donde CausaDB se probó a sí misma. Ninguno es un demo armado — son incidentes reales de desarrollo registrados en el ledger.</p>
+    <div class="grid grid--two-columns">
+        <div class="card">
+            <div class="card__eyebrow">Reconstrucción</div>
+            <h3 class="card__title">Decime cómo se integró Hermes a CausaDB — en minutos, no en horas de arqueología</h3>
+            <p class="card__body">La historia de CausaDB tiene huecos: su etapa temprana no estaba instrumentada. Aun así, con un BIT como punto de partida, el sistema reconstruyó la genealogía completa de la integración de Hermes: antecedentes, eventos por secuencia, decisiones, incidentes concurrentes, y sus propias correcciones cuando encontraba evidencia contradictoria. Y con honestidad: esto lo sé, esto lo infiero, esto no está registrado. La memoria no pierde credibilidad cuando encuentra un agujero: lo dice.</p>
+        </div>
+        <div class="card">
+            <div class="card__eyebrow">13-08-2026</div>
+            <h3 class="card__title">El agente dijo DONE. El ledger lo desmintió.</h3>
+            <p class="card__body">Un agente reportó "5 tests PASS". El ledger mostró 4 snapshots del mismo archivo con contenido íntegro y hash verificado: los tests pasaban contra un formato sintético distinto del real. En producción, el parser emitía 0 eventos. El "DONE" era teatro. El Checker restauró lo tocado indebidamente desde el snapshot exacto. La confianza no viene del agente, viene del ledger.</p>
+        </div>
+        <div class="card">
+            <div class="card__eyebrow">18-08-2026</div>
+            <h3 class="card__title">El sistema se caía con 160.000 eventos.</h3>
+            <p class="card__body">causadb revive fallaba con timeout, CPU al 38% y fuga de memoria sostenida. En lugar de excavar código, la reconstrucción determinista del ledger señaló la causa en segundos: el motor validaba la hash-chain completa 3 veces por llamada. Fix aplicado: respuesta instantánea, CPU 0.0%. El diagnóstico pasó de horas de perfiles a una lectura.</p>
+        </div>
+        <div class="card">
+            <div class="card__eyebrow">19-08-2026</div>
+            <h3 class="card__title">¿Le creés a tu agente cuando dice que terminó?</h3>
+            <p class="card__body">Una auditoría "a ciegas" (sin guiarlo sobre qué buscar) sobre BIT-CHR.107 y el estado de una feature. En esta auditoría, no encontró una sola afirmación que contradijera la evidencia recuperada — en minutos. El agente pasó de adivinar a razonar con evidencia. Del "confiar y esperar" al "verificar por evidencia".</p>
+        </div>
+    </div>
+    </div>
+</section>
+
+    <!-- SECTION: THESIS -->
+<section id="thesis" class="section">
+    <div class="container">
+    <div class="section__eyebrow">La tesis</div>
+    <h2 class="section__title">No es memoria, es historia reconstructible</h2>
+    <p class="section__lead">El conocimiento viene con la IA. Pero viene suelto: sin orden, sin continuidad, sin historia. Hay que saber administrarlo — y mientras mejor lo administres, mejor es su desempeño.</p>
+    <p>CausaDB es esa administración: la capa que organiza, preserva y reutiliza el conocimiento que la IA ya trae, para que no se pierda entre sesiones ni se decida dos veces lo mismo.</p>
+    <div class="grid grid--three-columns">
+        <div class="grid__item">
+            <strong>Operational provenance</strong>
+            <p>Cada efecto real queda registrado (archivos, comandos, herramientas, decisiones) en una cadena inalterable.</p>
+        </div>
+        <div class="grid__item">
+            <strong>Reconstructible system history</strong>
+            <p>A partir de un evento cualquiera podés reconstruir qué pasó, en qué orden, y por qué se decidió así.</p>
+        </div>
+        <div class="grid__item">
+            <strong>Evidence-backed continuity</strong>
+            <p>Cuando una sesión se corta, el contexto se recupera de la evidencia, no de la memoria de quien lo hizo.</p>
+        </div>
+    </div>
+    <div class="section__highlight">
+        <div class="section__eyebrow">El argumento Día 1</div>
+        <h3>Empezá el proyecto con memoria operacional verificable desde el primer día.</h3>
+        <p>Un proyecto que nace con CausaDB desde su primer evento tiene la historia completa: cada decisión, propuesta, objeción, alternativa descartada, implementación, test fallido, fix, validación y consecuencia queda registrada. Seis meses después, nadie pregunta \"¿por qué esta arquitectura?\" — CausaDB lo responde con la cadena de decisiones.</p>
+        <p>Las herramientas de observabilidad registran lo que pasa dentro del sistema. CausaDB registra además la historia de decisiones que llevó a construir el sistema. No solo \"¿qué pasó?\" sino \"¿por qué esta arquitectura existe?\", \"¿quién lo decidió?\", \"¿qué alternativa se descartó?\", \"¿qué evidencia lo justificó?\", \"¿fue validada?\", \"¿qué cambió después?\"</p>
+        <p>Cuanto más viejo se hace un software, más valiosa se vuelve esta historia. Un proyecto de una semana puede sobrevivir sin ella. Uno de dos años acumula decisiones heredadas, agentes que ya no existen, workarounds y deuda técnica — y ahí la pregunta ya no es \"¿qué hizo el agente?\" sino \"¿cómo carajo llegamos hasta acá?\"</p>
+        <p><em>Y cuando hay un hueco en la historia, CausaDB no finge: lo dice. Esto lo sé. Esto lo infiero. Esto no está registrado. La memoria no pierde credibilidad cuando encuentra un agujero — la pierde cuando lo esconde.</em></p>
+    </div>
+    </div>
+</section>
+
+    <!-- SECTION: PROBLEMS -->
+<section id="problems" class="section">
+    <div class="container">
+    <div class="section__eyebrow">Problemas que resuelve</div>
+    <h2 class="section__title">Los problemas que tu agente no te cuenta</h2>
+    <p class="section__lead">Seis dolores reales del trabajo diario con agentes de IA. Seis cosas que CausaDB resuelve con evidencia.</p>
+    <div class="grid grid--two-columns">
+        <div>
+            <h3>El agente perdió el contexto.</h3>
+            <p>La sesión se cerró, el proceso murió, cambiaste de herramienta. revive te da la entrada de recuperación, el OCB y el histórico.</p>
+        </div>
+        <div>
+            <h3>Nadie sabe qué introdujo el problema.</h3>
+            <p>why, trace e impact reconstruyen relaciones, antecedentes y consecuencias a partir de la evidencia disponible.</p>
+        </div>
+        <div>
+            <h3>Los logs no explican el efecto real.</h3>
+            <p>Registramos archivos, comandos, herramientas y mutaciones observables — no solo prompts o tokens.</p>
+        </div>
+        <div>
+            <h3>Se repite el mismo trabajo en cada sesión.</h3>
+            <p>Las skills y el proceso de distill conservan patrones, convenciones y decisiones reutilizables.</p>
+        </div>
+        <div>
+            <h3>Se escribió mucho y sobrevivió poco.</h3>
+            <p>score mide churn, waste y survival de una sesión.</p>
+        </div>
+        <div>
+            <h3>No sabés si tu agente hizo lo que dice.</h3>
+            <p>El ledger delata el teatro: el orden, el alcance y los claims inflados se vuelven detectables por discrepancia.</p>
+        </div>
+    </div>
+    </div>
+</section>
+
+<!-- SECTION: HOW -->
+<section id="how" class="section">
+    <div class="container">
+    <div class="section__eyebrow">Cómo funciona</div>
+    <h2 class="section__title">Una capa de memoria que vive junto a tu agente, no adentro de él</h2>
+    <p class="section__lead">Cuatro pasos, de la captura a la reconstrucción. Todo local y offline. Sin nube, sin subir tus datos, sin depender de ningún proveedor.</p>
+    <ol>
+        <li><strong>Captura (pasivo y barato)</strong> — Harvesters leen las fuentes de tu agente (OpenCode, Gemini CLI, Claude Code, Cursor, Hermes, etc.) y registran los efectos reales en un ledger local.</li>
+        <li><strong>Registro (inalterable)</strong> — El ledger es append-only con hash-chain. Nada se edita retrospectivamente sin romper la cadena.</li>
+        <li><strong>Recuperación (progresiva)</strong> — Una escalera de memoria sube de nivel solo si el anterior no alcanzó: revive (barato) → OCB (barato) → query (medio) → replay (caro, último recurso).</li>
+        <li><strong>Reconstrucción (dirigida)</strong> — A partir de un evento, why / trace / impact reconstruyen relaciones, antecedentes y consecuencias a partir de la evidencia disponible. recover trae la conversación original cuando la fuente la conserva.</li>
+    </ol>
+    </div>
+</section>
+
+    <!-- SECTION: DIFFERENTIATORS -->
+<section id="differentiators" class="section">
+    <div class="container">
+    <div class="section__eyebrow">Diferenciadores</div>
+    <h2 class="section__title">La historia operacional que las herramientas actuales dejan fragmentada</h2>
+    <p class="section__lead">No competimos con observabilidad ni con memoria: cubrimos lo que ellos no cubren — o lo hacen, pero por separado. Trazas de ejecución por un lado, conversaciones por el otro. La historia de decisiones que llevó a construir el sistema, ninguna la cuenta completa. Ese espacio es de CausaDB.</p>
+    <table class="compare">
+        <thead>
+            <tr>
+                <th>Pregunta</th>
+                <th>Observabilidad<br><small>(LangSmith, Langfuse, Phoenix)</small></th>
+                <th>Memoria<br><small>(Mem0, Zep, Letta)</small></th>
+                <th class="compare__highlight">CausaDB</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>¿Qué registra?</td>
+                <td>Trazas de llamadas LLM</td>
+                <td>Conversaciones y hechos del agente</td>
+                <td class="compare__highlight">Efectos reales + decisiones + historia del sistema</td>
+            </tr>
+            <tr>
+                <td>¿Qué responde?</td>
+                <td>"¿Qué llamó el agente?"</td>
+                <td>"¿Qué recuerda el agente?"</td>
+                <td class="compare__highlight">"¿Qué hizo, cómo, y por qué se decidió así?"</td>
+            </tr>
+            <tr>
+                <td>¿Reconstruye el pasado?</td>
+                <td>Histórico de trazas</td>
+                <td>Histórico de conversaciones, no historia causal</td>
+                <td class="compare__highlight">Sí, historia reconstructible y auditable</td>
+            </tr>
+            <tr>
+                <td>¿Detecta teatro?</td>
+                <td>Parcial (traces)</td>
+                <td>No</td>
+                <td class="compare__highlight">Sí, por discrepancia entre claims y eventos</td>
+            </tr>
+            <tr>
+                <td>¿Dónde vive?</td>
+                <td>Nube / SaaS</td>
+                <td>Nube / SaaS</td>
+                <td class="compare__highlight">Local, offline, tuyo</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<!-- SECTION: CAPABILITIES -->
+<section id="capabilities" class="section">
+    <div class="container">
+    <div class="section__eyebrow">Capacidades</div>
+    <h2 class="section__title">Lo que se puede comunicar hoy</h2>
+    <ul class="grid-list">
+        <li>✓ Ledger append-only con hash-chain + replay determinista.</li>
+        <li>✓ Recuperación progresiva: revive → OCB → query → replay.</li>
+        <li>✓ Causalidad explícita: why, trace, impact.</li>
+        <li>✓ Restauración de archivos por snapshot con verificación sha256.</li>
+        <li>✓ Particiones OCB para actividad reciente, BlobStore para artefactos.</li>
+        <li>✓ Skills y distill para patrones reutilizables entre sesiones.</li>
+        <li>✓ score para medir la salud real de una sesión (churn / waste / survival).</li>
+        <li>✓ validate y sentinel para verificar integridad de la cadena.</li>
+        <li>✓ 19 tools MCP + CLI + REST API local + export/import (incluyendo OpenTelemetry).</li>
+        <li>✓ Harvesters para múltiples agentes y fuentes: OpenCode, Gemini CLI, Claude Code, Cursor, Hermes, etc.</li>
+    </ul>
+    </div>
+</section>
+
+<!-- SECTION: AGENTS -->
+<section id="agents" class="section">
+    <div class="container">
+    <div class="section__eyebrow">Memoria compartida</div>
+    <h2 class="section__title">La memoria pertenece al proyecto, no al agente</h2>
+    <p class="section__lead">CausaDB habla MCP por HTTP de forma segura: cualquier agente compatible — hoy y los que vengan — puede consultar la misma historia.</p>
+    <ul class="grid-list">
+        <li>✓ Exposición por HTTP (streamable-http) con bind-safety: sin API key, solo tu máquina.</li>
+        <li>✓ Subconjunto de tools de lectura: revive, query, ocb_status, validate, sentinel.</li>
+        <li>✓ Redacción de datos sensibles y exclusión de recursos que exponen el ledger completo.</li>
+        <li>✓ Agnóstico al cliente: OpenCode, Claude, Gemini CLI, y agentes remotos como ChatGPT.</li>
+        <li>✓ Abrí un proyecto con otro agente y preguntale qué pasó: consulta CausaDB, no un prompt kilométrico.</li>
+    </ul>
+    </div>
+</section>
+
+<!-- SECTION: NOPROMISES -->
+<section id="nopromises" class="section">
+    <div class="container">
+    <div class="section__eyebrow">Lo que NO prometemos</div>
+    <h2 class="section__title">La honestidad sobre los límites es parte del producto</h2>
+    <p class="section__lead">No vendemos humo. Esto es lo que CausaDB no es, y por qué eso te conviene.</p>
+    <ul>
+        <li><strong>"Memoria perfecta"</strong> — No existe.</li>
+        <li><strong>"Nunca pierde nada"</strong> — La captura puede fallar; lo que sí garantizamos es que cuando el dato entra, la reconstrucción es determinista y auditable.</li>
+        <li><strong>"Garantiza continuidad total"</strong> — No. Recuperamos lo que hay, y decimos qué falta.</li>
+        <li><strong>"Cumplimiento legal garantizado"</strong> — Evidencia técnica, no certificación legal.</li>
+        <li><strong>"Atribuye siempre quién hizo cada cambio"</strong> — Atribuimos por evidencia cuando la evidencia existe; los huecos se detectan y reportan, no se esconden.</li>
+    </ul>
+    </div>
+</section>
+
+<!-- SECTION: COMMERCIAL -->
+<section id="commercial" class="section">
+    <div class="container">
+    <div class="section__eyebrow">Modelo comercial</div>
+    <h2 class="section__title">Open Core</h2>
+    <p class="section__lead">Hipótesis, no oferta publicada. Empezamos gratis; el pago llega cuando el valor pago esté claro.</p>
+    <div class="grid-cards">
+        <div class="card">
+            <h3>Gratis</h3>
+            <p>Motor local, CLI, ledger, replay, memoria básica. Objetivo: adopción masiva.</p>
+        </div>
+        <div class="card">
+            <h3>Pago futuro (Enterprise)</h3>
+            <p>Gestión avanzada, control de acceso, persistencia distribuida, reportes de cumplimiento, almacenamiento en la nube, soporte técnico.</p>
+        </div>
+    </div>
+    </div>
+</section>
+
+    <!-- SECTION: INVITACION -->
+    <section id="invitacion" class="section">
+        <div class="container">
+            <div class="section__eyebrow">La invitación</div>
+            <h2 class="section__title">Probalo gratis. Hoy no te cuesta nada.</h2>
+            <p class="section__lead">Comenzá un proyecto con tu herramienta favorita, conectalo y trabajá con normalidad. No te va a costar nada. Pero los beneficios que CausaDB te ofrece —a vos y a tu agente— con el paso del tiempo, no tienen precio.</p>
+            <p class="hero__muted"><span class="hl">Dale un BIT. Preguntale qué pasó. Mirá lo que recupera.</span></p>
+            <a href="#" class="hero__cta hero__cta--primary">Comenzar con CausaDB</a>
+            <a href="#proof" class="hero__cta hero__cta--secondary">Ver la prueba</a>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 — Dale memoria a tu agente en el proyecto que estás trabajando.</p>
+        </div>
+    </footer>
+</body>
+</html>
