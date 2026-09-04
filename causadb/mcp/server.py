@@ -28,11 +28,14 @@ F.3 (Tool Rename): all tools use short names (log, replay, sentinel, …)
   without the causadb_ prefix. The internal `_tools.causadb_*` functions
   keep their prefixed names as private module-internal dispatch targets.
 """
+import ipaddress
 import json
 import os
 import sys
 from pathlib import Path
 from typing import Optional
+
+import anyio
 
 try:
     from mcp.server.mcpserver import MCPServer as MCPBase  # mcp v2
@@ -41,6 +44,7 @@ except ImportError:
 
 from causadb._config import CausaDBConfig
 from causadb._ledger_index import LedgerIndex
+from causadb._redactor import redact_payload
 from causadb._replay_engine import ReplayEngine
 from causadb._workspace import WorkspaceManager
 from causadb.mcp import _tools
@@ -766,26 +770,234 @@ def create_server(config: Optional[CausaDBConfig] = None,
 mcp = None
 
 
+# ---------------------------------------------------------------------------
+# Network mode (streamable-http) security — proof of interoperability.
+#
+# These helpers are applied ONLY in `main()` when `--transport != stdio`.
+# `create_server()` is intentionally NOT touched: the ~21 tests that use it
+# keep getting the full 21-tool server. The security subset is a separate
+# layer applied on top of a freshly built server.
+# ---------------------------------------------------------------------------
+
+# Tools that remain exposed in network mode (read-only, safe).
+HTTP_SAFE_TOOLS = {"revive", "query", "ocb_status", "validate", "sentinel"}
+
+# Resources that remain exposed in network mode. causadb://events and
+# causadb://state dump the whole ledger and are excluded (see
+# `_apply_http_resource_subset`).
+HTTP_SAFE_RESOURCES = {"causadb://config", "causadb://canon"}
+
+
+def _is_loopback(host: str) -> bool:
+    """Return True if `host` binds to loopback only.
+
+    Treats "localhost" and "" as loopback. Uses `ipaddress` to detect
+    loopback IPs (127.0.0.1, ::1, …). Any other hostname/IP is NOT loopback
+    (fail-closed: only known-loopback is considered safe).
+    """
+    if host in ("localhost", ""):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        # Not a bare IP (e.g. a hostname). Fail-closed: not loopback.
+        return False
+
+
+def _check_bind_safety(host: str, api_key: Optional[str]) -> None:
+    """Fail-closed bind-safety (OpenJarvis check_bind_safety pattern).
+
+    A non-loopback host WITHOUT an API key is refused with ``SystemExit(1)``.
+    Loopback hosts are always allowed (the local proof). Non-loopback hosts
+    require an explicit API key (operator opted in to network exposure).
+    """
+    if not _is_loopback(host) and not api_key:
+        print(
+            f"CausaDB: refusing to bind MCP server to non-loopback host "
+            f"{host!r} without an API key. Set CAUSADB_MCP_API_KEY or use a "
+            "loopback host (127.0.0.1).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _require_explicit_ledger(ledger: Optional[str]) -> str:
+    """Network mode requires an explicit ledger (--ledger or env).
+
+    Unlike stdio mode, network mode must NOT resolve the ledger from CWD
+    (auto-init / discover) — the ledger is a security boundary. Missing
+    ledger → ``SystemExit(1)``.
+    """
+    path = ledger or os.environ.get("CAUSADB_LEDGER_PATH")
+    if path:
+        return os.path.abspath(path)
+    print(
+        "CausaDB: network mode requires an explicit ledger. Pass --ledger "
+        "<path> or set CAUSADB_LEDGER_PATH.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+async def _apply_http_tool_subset(server) -> set:
+    """Remove every write/sensitive tool, leaving only the safe read-only set.
+
+    Returns the set of tool names that remain exposed (== HTTP_SAFE_TOOLS
+    when the server was built by `create_server()`). Any tool registered by
+    `create_server()` that is not in HTTP_SAFE_TOOLS is removed.
+    """
+    registered = {t.name for t in await server.list_tools()}
+    to_remove = registered - HTTP_SAFE_TOOLS
+    for name in to_remove:
+        server.remove_tool(name)
+    return HTTP_SAFE_TOOLS & registered
+
+
+def _apply_http_resource_subset(server) -> set:
+    """Remove causadb://events and causadb://state resources in network mode.
+
+    FastMCP has no ``remove_resource``, so we drop them from the internal
+    resource manager (documented limitation). Returns the URIs that remain
+    exposed (config + canon).
+    """
+    resources = server._resource_manager._resources
+    for uri in list(resources.keys()):
+        if uri not in HTTP_SAFE_RESOURCES:
+            del resources[uri]
+    return set(resources.keys())
+
+
+def _redact_recursive(value, config):
+    """Recursively apply `redact_payload` to every dict in a structure."""
+    if isinstance(value, dict):
+        redacted = redact_payload(value, config)
+        return {k: _redact_recursive(v, config) for k, v in redacted.items()}
+    if isinstance(value, list):
+        return [_redact_recursive(v, config) for v in value]
+    return value
+
+
+def _redact_json_output(text: str, config) -> str:
+    """Redact sensitive fields in a JSON string output (query/revive).
+
+    Parses the JSON, redacts every dict recursively with `redact_payload`,
+    and re-serializes. Non-JSON output is returned unchanged.
+    """
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return text
+    return json.dumps(_redact_recursive(data, config), default=str, sort_keys=True)
+
+
+def _wrap_tool_with_redaction(server, tool_name: str, config) -> None:
+    """Replace a tool's fn with a wrapper that redacts sensitive fields.
+
+    We mutate the existing Tool's ``fn`` (keeping its ``fn_metadata`` /
+    ``arg_model`` intact) so FastMCP still validates the original parameters.
+    The wrapper calls the original fn and redacts its JSON output.
+    """
+    tool = server._tool_manager.get_tool(tool_name)
+    original_fn = tool.fn
+
+    def wrapper(**kwargs):
+        return _redact_json_output(original_fn(**kwargs), config)
+
+    tool.fn = wrapper
+
+
+async def _apply_http_security(server, config) -> dict:
+    """Apply the full network-mode security subset to a server.
+
+    Returns a dict describing what was applied (tools + resources remaining).
+    """
+    tools = await _apply_http_tool_subset(server)
+    resources = _apply_http_resource_subset(server)
+    for name in ("query", "revive"):
+        _wrap_tool_with_redaction(server, name, config)
+    return {"tools": tools, "resources": resources}
+
+
+def _parse_args():
+    """Minimal argv parsing for the MCP server entry point.
+
+    Returns (transport, host, port, ledger). Uses the same sys.argv pattern
+    the existing `main()` already uses (no argparse dependency).
+    """
+    transport = "stdio"
+    host = "127.0.0.1"
+    port = 8000
+    ledger = None
+    argv = sys.argv[1:]
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--transport" and i + 1 < len(argv):
+            transport = argv[i + 1]
+            i += 2
+            continue
+        if arg == "--host" and i + 1 < len(argv):
+            host = argv[i + 1]
+            i += 2
+            continue
+        if arg == "--port" and i + 1 < len(argv):
+            try:
+                port = int(argv[i + 1])
+            except ValueError:
+                port = 8000
+            i += 2
+            continue
+        if arg == "--ledger" and i + 1 < len(argv):
+            ledger = argv[i + 1]
+            i += 2
+            continue
+        i += 1
+    return transport, host, port, ledger
+
+
 def main() -> None:
     """Entry point for ``causadb-mcp`` console script.
 
     Resolves the ledger path at startup (env > discover > auto-init)
     unless ``--no-auto-init`` is passed, in which case the legacy
     behavior applies (each tool requires an explicit ``ledger_path``).
+
+    ``--transport`` selects the transport:
+      - "stdio" (default): current behavior, unchanged.
+      - "streamable-http": exposes the server over HTTP with a security
+        subset (bind-safety, explicit ledger, read-only tools, redaction).
+        The proof runs on loopback (127.0.0.1) by default.
     """
     global mcp
-    no_auto_init = "--no-auto-init" in sys.argv
-    if no_auto_init:
-        mcp = create_server()
-    else:
-        try:
-            ledger_path = _resolve_ledger()
-            mcp = create_server(config_ledger_path=ledger_path)
-        except (RuntimeError, FileExistsError):
-            # Degradar a server sin default: tools con `ledger_path`
-            # explícito siguen funcionando (G5.B). No crashear al arrancar.
+    transport, host, port, ledger = _parse_args()
+
+    if transport == "stdio":
+        no_auto_init = "--no-auto-init" in sys.argv
+        if no_auto_init:
             mcp = create_server()
-    mcp.run(transport="stdio")
+        else:
+            try:
+                ledger_path = _resolve_ledger()
+                mcp = create_server(config_ledger_path=ledger_path)
+            except (RuntimeError, FileExistsError):
+                # Degradar a server sin default: tools con `ledger_path`
+                # explícito siguen funcionando (G5.B). No crashear al arrancar.
+                mcp = create_server()
+        mcp.run(transport="stdio")
+        return
+
+    # --- Network mode (streamable-http) — security subset -----------------
+    api_key = os.environ.get("CAUSADB_MCP_API_KEY")
+    _check_bind_safety(host, api_key)
+    ledger_path = _require_explicit_ledger(ledger)
+    config = CausaDBConfig(ledger_path=ledger_path)
+    mcp = create_server(config=config)
+    anyio.run(_apply_http_security, mcp, config)
+    # host/port live on the FastMCP constructor settings; set them post-hoc
+    # (create_server() is intentionally untouched).
+    mcp.settings.host = host
+    mcp.settings.port = port
+    mcp.run(transport="streamable-http")
 
 
 if __name__ == "__main__":
