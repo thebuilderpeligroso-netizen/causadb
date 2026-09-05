@@ -52,8 +52,8 @@ causadb = "causadb.cli.main:main"
 causadb-mcp = "causadb.mcp.server:main"
 
 [project.urls]
-Homepage = "https://causadb.dev"
-Documentation = "https://causadb.dev/docs"
+Homepage = "https://causadb.netlify.app/"
+Documentation = "https://github.com/thebuilderpeligroso-netizen/causadb"
 Source = "https://github.com/thebuilderpeligroso-netizen/causadb"
 Issues = "https://github.com/thebuilderpeligroso-netizen/causadb/issues"
 
