@@ -1,29 +1,22 @@
-# CausaDB: La memoria de largo plazo para tus agentes de IA
+# CausaDB — Memoria verificable para agentes de IA
 
-### Tu agente ya no olvida. Y vos ya no perdés horas de trabajo.
+### No solo recuerda lo que hizo tu agente. Podés reconstruirlo y verificarlo.
 
 ¿Alguna vez te pasó? Estás trabajando con un agente, le das instrucciones, te sumergís en el código... y de repente, **todo se apaga**.
 
 Un bucle infinito, un corte de luz, una sesión cerrada por error. Y cuando volvés, el agente es un extraño: perdió el contexto, olvidó los matices críticos, y te toca empezar de cero. Lo intentás "rehidratar", pero ya no recuerda lo que era obvio hace 20 minutos.
 
-**CausaDB existe para que eso sea cosa del pasado.**
+No es que el agente tenga poca memoria. Es que **nadie registró lo que pasó**.
+
+CausaDB registra la historia operacional de tu proyecto y la convierte en memoria local, persistente y reconstruible. No guarda solo conversaciones: registra efectos, decisiones y evidencia, protegidos por una cadena criptográfica, para que puedas reconstruir qué ocurrió cuando lo necesitás.
+
+> **No es memoria, es historia reconstructible.**
+
+Tu agente puede olvidar. El proyecto no.
 
 ---
 
-## ¿Qué es CausaDB?
-
-CausaDB es la **Caja Negra** que asegura la **Continuidad Cognitiva** de tus agentes de IA. Registra todo lo que hace tu agente (archivos, comandos, decisiones, razonamiento), lo protege con una cadena criptográfica, y **lo revive exactamente donde quedó** cuando lo necesitás.
-
-- **Autonomía real:** Dejá a tu agente trabajando solo sin miedo. Si algo falla mientras no estás, CausaDB captura la causa raíz.
-- **Memoria de 3 capas, como el cerebro humano:**
-  - **Largo plazo:** el ledger inmutable (hash-chain criptográfica, append-only).
-  - **Mediano plazo:** el working set reconstruible por replay determinista.
-  - **Corto plazo:** el OCB (memoria de sesión) con detalle granular de archivos (snapshots pre/post).
-- **Tu mejor complemento:** capa invisible sobre tus herramientas favoritas. Funciona con **modelos locales (Ollama, LM Studio)** y **en la nube (OpenAI, Claude)**.
-- **Resiliencia total:** sobrevive a crashes, cortes de luz y cierres abruptos.
-- **Trazabilidad completa:** no solo logs — una cadena completa (LLM → Razonamiento → Herramienta → Resultado).
-
-### Caso de uso estrella: el "revive"
+## La demostración
 
 Apagaste la máquina, te fuiste, o se te cortó la luz. A la vuelta:
 
@@ -32,6 +25,44 @@ causadb revive
 ```
 
 CausaDB reconstruye el estado, resume lo que pasó, y le devuelve al agente (o a vos) el contexto completo: **qué eventos hubo, qué había dentro de cada archivo, qué se decidió y por qué**.
+
+Y acá está lo que una memoria común no hace: **podés verificar lo que el agente dice que hizo.**
+
+- *"El agente dijo DONE. El ledger lo desmintió."*
+- *"Le dimos un proyecto que el agente no conocía. En lugar de explicarle la historia, dejamos que reconstruyera qué había pasado usando CausaDB. Y lo reconstruyó."*
+
+Eso no se promete. Se demuestra.
+
+---
+
+## Qué podés hacer con esa memoria
+
+- **Recuperar contexto** después de una sesión interrumpida. No arrancás de cero.
+- **Saber quién tocó una línea** y qué romperías si la revirtieras (`trace`, `why`, `impact`).
+- **Verificar lo que un agente afirma haber hecho.** El registro no se contradice con lo que el agente *dice*.
+- **Encontrar el evento exacto que introdujo un bug** (`bisect`).
+- **Compartir memoria entre agentes distintos** — la memoria pertenece al proyecto, no al agente.
+- **Mantener la historia del proyecto aunque cambies de agente o de herramienta.**
+
+---
+
+## Por qué no es "otra memoria para agentes"
+
+Hay un océano de productos diciendo "Your AI remembers". Eso resuelve recordar: *"al usuario le gusta el modo oscuro"*.
+
+CausaDB resuelve otra cosa. No nació para guardar preferencias; nació alrededor de:
+
+- qué ocurrió y **cuándo**
+- qué decisión se tomó y **por qué**
+- qué cambió después
+- qué agente lo hizo y **qué evidencia existe**
+- y cómo **reconstruir el estado actual**
+
+Una memoria común guarda. CausaDB **registra efectos, decisiones y evidencia** — encadenados criptográficamente — para que puedas reconstruir y auditar la historia, no solo recordarla.
+
+Es la diferencia entre *"tu agente recuerda"* y *"podés reconstruir y verificar qué hizo"*.
+
+CausaDB es **local-first** y funciona junto a tus herramientas de IA, sin obligarte a cambiar de modelo o proveedor.
 
 ---
 
@@ -71,6 +102,35 @@ causadb bisect --test "pytest tests" # evento exacto que introdujo un bug
 causadb dashboard                    # visualización web completa
 causadb watch stop                   # genera score + skills automáticamente
 ```
+
+---
+
+## Cómo funciona
+
+CausaDB es un **ledger causal append-only**: un registro encadenado criptográficamente (hash-chain) que va escribiendo todo lo que ocurre — archivos, comandos, decisiones, razonamiento — y no se puede alterar retroactivamente. Eso es lo que permite reconstruir y verificar en lugar de confiar.
+
+La memoria se organiza en tres niveles:
+
+- **Largo plazo:** el ledger inmutable (hash-chain criptográfica, append-only).
+- **Mediano plazo:** el working set reconstruible por replay determinista.
+- **Corto plazo:** el OCB (memoria de sesión) con detalle granular de archivos (snapshots pre/post).
+
+### Herramientas clave
+
+| Herramienta | Qué hace |
+|---|---|
+| `revive` | El agente vuelve a la vida con todo el contexto. No arranca de cero. |
+| `trace` / `why` / `impact` | ¿Quién tocó esta línea? ¿Qué rompo si revierto este cambio? |
+| `snapshot` + auto-archivo | Fotos pre/post de cada archivo — memoria granular del "qué había dentro". |
+| `resume` | El agente nuevo recibe el contexto de la sesión anterior. |
+| `score` | ¿Mi sesión fue productiva? 0-100 midiendo churn, waste y supervivencia de código. |
+| `skills` / `distill` | Patrones de trabajo aprendidos entre sesiones, reutilizables. |
+| `bisect` | Encontrar el evento exacto que introdujo un bug. |
+| `audit` / `audit-trail` | Audibilidad completa (EU AI Act, NIST AI RMF). |
+| `sentinel` / `validate` | Integridad del ledger — ¿se corrompió? ¿hay eventos inconsistentes? |
+| `watch --daemon` | El agente trabaja solo mientras vos no estás. Captura automática LLM + archivos + comandos. |
+| `undo` | Restaurar un archivo desde el último snapshot conocido bueno. |
+| 21 fuentes de harvest | Captura pasiva: shell, git, browser, ActivityWatch, MT5, Jupyter, Obsidian, Zotero, agentes de coding, n8n, Freqtrade y más. |
 
 ### Integración con agentes (MCP)
 
@@ -178,28 +238,7 @@ Visualización completa sin consola: línea de tiempo humanizada, búsqueda, tra
 
 ---
 
-## Lo que CausaDB resuelve
-
-| Herramienta | Qué problema resuelve |
-|---|---|
-| `revive` | El agente vuelve a la vida con todo el contexto. No arranca de cero. |
-| `trace` / `why` / `impact` | ¿Quién tocó esta línea? ¿Qué rompo si revierto este cambio? |
-| `snapshot` + auto-archivo | Fotos pre/post de cada archivo — memoria granular del "qué había dentro". |
-| `resume` | El agente nuevo recibe el contexto de la sesión anterior. |
-| `score` | ¿Mi sesión fue productiva? 0-100 midiendo churn, waste y supervivencia de código. |
-| `skills` / `distill` | Patrones de trabajo aprendidos entre sesiones, reutilizables. |
-| `bisect` | Encontrar el evento exacto que introdujo un bug. |
-| `audit` / `audit-trail` | Audibilidad completa (EU AI Act, NIST AI RMF). |
-| `sentinel` / `validate` | Integridad del ledger — ¿se corrompió? ¿hay eventos inconsistentes? |
-| `watch --daemon` | El agente trabaja solo mientras vos no estás. Captura automática LLM + archivos + comandos. |
-| `undo` | Restaurar un archivo desde el último snapshot conocido bueno. |
-| 21 fuentes de harvest | Captura pasiva: shell, git, browser, ActivityWatch, MT5, Jupyter, Obsidian, Zotero, agentes de coding, n8n, Freqtrade y más. |
-
-### Comandos CLI (35+)
-
-`config`, `init`, `setup`, `chronicle`, `log`, `replay`, `sentinel`, `validate`, `query`, `feedback`, `vigilante`, `proxy`, `proxy-server`, `sandbox`, `stream`, `export`, `import`, `compliance`, `incident`, `audit-trail`, `mcp-proxy`, `serve`, `harvest`, `recover`, `watch`, `opencode-config`, `audit`, `ocb`, `impact`, `bisect`, `why`, `trace`, `resume`, `score`, `undo`, `snapshot`, `crash`, `update`, `user`, `sync`, `distill`, `explain`.
-
-### Multi-plataforma
+## Multi-plataforma
 
 - **Linux:** soporte completo (double-fork nativo).
 - **macOS:** idéntico a Linux.
@@ -270,4 +309,4 @@ Transparencia sobre los límites actuales del producto, en orden de impacto:
 
 ---
 
-*Última actualización: 04/09/2026*
+*Última actualización: 08/09/2026*
