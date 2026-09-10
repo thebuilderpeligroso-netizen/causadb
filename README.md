@@ -2,6 +2,10 @@
 
 ### No solo recuerda lo que hizo tu agente. Podés reconstruirlo y verificarlo.
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="CausaDB reviviendo y reconstruyendo la historia de un proyecto" width="800">
+</p>
+
 ¿Alguna vez te pasó? Estás trabajando con un agente, le das instrucciones, te sumergís en el código... y de repente, **todo se apaga**.
 
 Un bucle infinito, un corte de luz, una sesión cerrada por error. Y cuando volvés, el agente es un extraño: perdió el contexto, olvidó los matices críticos, y te toca empezar de cero. Lo intentás "rehidratar", pero ya no recuerda lo que era obvio hace 20 minutos.
