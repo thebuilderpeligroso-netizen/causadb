@@ -1,10 +1,14 @@
-# CausaDB — Memoria verificable para agentes de IA
+# CausaDB — La memoria de tu proyecto para agentes de IA
 
-### No solo recuerda lo que hizo tu agente. Podés reconstruirlo y verificarlo.
+### Cambiá de agente sin perder el contexto del proyecto.
 
 <p align="center">
   <img src="docs/assets/demo.gif" alt="CausaDB reviviendo y reconstruyendo la historia de un proyecto" width="800">
 </p>
+
+CausaDB guarda una historia verificable de tu proyecto, para que pases de Claude Code a OpenCode, Gemini CLI u otra herramienta sin empezar de cero.
+
+**No es memoria de un agente. Es memoria del proyecto.**
 
 ¿Alguna vez te pasó? Estás trabajando con un agente, le das instrucciones, te sumergís en el código... y de repente, **todo se apaga**.
 

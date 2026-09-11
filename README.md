@@ -1,9 +1,9 @@
-# CausaDB — Verifiable memory for AI agents
+# CausaDB — Project memory for AI agents
 
 > **Español:** [README en español](README.es.md)
 
 <p align="center">
-  <strong>Not just "memory" — reconstructible history. Know what your agent did, and prove it.</strong>
+  <strong>Switch agents without losing your project's context. One verifiable history of what your agents did — regardless of which tool you use.</strong>
 </p>
 
 <p align="center">
@@ -31,9 +31,15 @@ It changes files, runs commands, makes decisions, reasons — and it all evapora
 
 CausaDB records the operational history of your project into **local, persistent, reconstructible memory**. It doesn't just save conversations: it records *effects, decisions and evidence*, protected by a cryptographic chain, so you can reconstruct what happened whenever you need it.
 
-> **Not memory. Reconstructible history.**
+> **The memory belongs to the project, not the agent.**
 
 Your agent can forget. Your project doesn't.
+
+Three things, always true:
+
+- **Continuity** — switch agents without losing context.
+- **Verification** — reconstruct what happened, even when the agent says it's done.
+- **Project memory** — one history for all your tools, not tied to any vendor.
 
 ---
 
