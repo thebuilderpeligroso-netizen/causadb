@@ -1,150 +1,167 @@
-# CausaDB — Memoria verificable para agentes de IA
+# CausaDB — Verifiable memory for AI agents
 
-### No solo recuerda lo que hizo tu agente. Podés reconstruirlo y verificarlo.
+> **Español:** [README en español](README.es.md)
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="CausaDB reviviendo y reconstruyendo la historia de un proyecto" width="800">
+  <strong>Not just "memory" — reconstructible history. Know what your agent did, and prove it.</strong>
 </p>
 
-¿Alguna vez te pasó? Estás trabajando con un agente, le das instrucciones, te sumergís en el código... y de repente, **todo se apaga**.
+<p align="center">
+  <a href="https://github.com/thebuilderpeligroso-netizen/causadb/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://pypi.org/project/causadb/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
+  <a href="https://github.com/thebuilderpeligroso-netizen/causadb"><img src="https://img.shields.io/badge/status-pre--release-orange.svg" alt="Status: pre-release"></a>
+  <a href="https://causadb.netlify.app"><img src="https://img.shields.io/badge/website-causadb.netlify.app-5E6AD2.svg" alt="Website"></a>
+</p>
 
-Un bucle infinito, un corte de luz, una sesión cerrada por error. Y cuando volvés, el agente es un extraño: perdió el contexto, olvidó los matices críticos, y te toca empezar de cero. Lo intentás "rehidratar", pero ya no recuerda lo que era obvio hace 20 minutos.
-
-No es que el agente tenga poca memoria. Es que **nadie registró lo que pasó**.
-
-CausaDB registra la historia operacional de tu proyecto y la convierte en memoria local, persistente y reconstruible. No guarda solo conversaciones: registra efectos, decisiones y evidencia, protegidos por una cadena criptográfica, para que puedas reconstruir qué ocurrió cuando lo necesitás.
-
-> **No es memoria, es historia reconstructible.**
-
-Tu agente puede olvidar. El proyecto no.
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="CausaDB reviving and reconstructing a project's history" width="800">
+</p>
 
 ---
 
-## La demostración
+## The problem
 
-Apagaste la máquina, te fuiste, o se te cortó la luz. A la vuelta:
+You're working with an AI agent, deep in the code… and then everything goes dark. An infinite loop, a power cut, a session closed by mistake.
+
+When you come back, the agent is a stranger. It lost the context, forgot the critical details, and you start from zero. You try to "rehydrate" it, but it doesn't remember what was obvious 20 minutes ago.
+
+**The agent doesn't have amnesia because the context window is too small. It has amnesia because nobody recorded what happened.**
+
+It changes files, runs commands, makes decisions, reasons — and it all evaporates with the session.
+
+CausaDB records the operational history of your project into **local, persistent, reconstructible memory**. It doesn't just save conversations: it records *effects, decisions and evidence*, protected by a cryptographic chain, so you can reconstruct what happened whenever you need it.
+
+> **Not memory. Reconstructible history.**
+
+Your agent can forget. Your project doesn't.
+
+---
+
+## Quick Start
 
 ```bash
-causadb revive
+pip install causadb
+causadb setup /your/project    # init + hooks + watcher + daemon, all in one
 ```
 
-CausaDB reconstruye el estado, resume lo que pasó, y le devuelve al agente (o a vos) el contexto completo: **qué eventos hubo, qué había dentro de cada archivo, qué se decidió y por qué**.
+Then let it run. When you need it back:
 
-Y acá está lo que una memoria común no hace: **podés verificar lo que el agente dice que hizo.**
+```bash
+causadb revive                  # reconstruct state + context summary
+```
 
-- *"El agente dijo DONE. El ledger lo desmintió."*
-- *"Le dimos un proyecto que el agente no conocía. En lugar de explicarle la historia, dejamos que reconstruyera qué había pasado usando CausaDB. Y lo reconstruyó."*
+`revive` reconstructs the state, summarizes what happened, and hands the agent (or you) the full context back: **what events fired, what was inside each file, what was decided and why.**
 
-Eso no se promete. Se demuestra.
+That's the thing a normal memory doesn't do: **you can verify what the agent claims it did.**
 
----
+- *"The agent said DONE. The ledger said otherwise."*
+- *"We gave a fresh agent a project it had never seen. Instead of explaining the history, we let it reconstruct what happened using CausaDB. And it did."*
 
-## Qué podés hacer con esa memoria
-
-- **Recuperar contexto** después de una sesión interrumpida. No arrancás de cero.
-- **Saber quién tocó una línea** y qué romperías si la revirtieras (`trace`, `why`, `impact`).
-- **Verificar lo que un agente afirma haber hecho.** El registro no se contradice con lo que el agente *dice*.
-- **Encontrar el evento exacto que introdujo un bug** (`bisect`).
-- **Compartir memoria entre agentes distintos** — la memoria pertenece al proyecto, no al agente.
-- **Mantener la historia del proyecto aunque cambies de agente o de herramienta.**
+That's not promised. It's demonstrated.
 
 ---
 
-## Por qué no es "otra memoria para agentes"
+## What you can do with it
 
-Hay un océano de productos diciendo "Your AI remembers". Eso resuelve recordar: *"al usuario le gusta el modo oscuro"*.
-
-CausaDB resuelve otra cosa. No nació para guardar preferencias; nació alrededor de:
-
-- qué ocurrió y **cuándo**
-- qué decisión se tomó y **por qué**
-- qué cambió después
-- qué agente lo hizo y **qué evidencia existe**
-- y cómo **reconstruir el estado actual**
-
-Una memoria común guarda. CausaDB **registra efectos, decisiones y evidencia** — encadenados criptográficamente — para que puedas reconstruir y auditar la historia, no solo recordarla.
-
-Es la diferencia entre *"tu agente recuerda"* y *"podés reconstruir y verificar qué hizo"*.
-
-CausaDB es **local-first** y funciona junto a tus herramientas de IA, sin obligarte a cambiar de modelo o proveedor.
+- **Recover context** after an interrupted session — no more starting from zero.
+- **Know who touched a line** and what you'd break by reverting it (`trace`, `why`, `impact`).
+- **Verify what an agent claims it did.** The record doesn't bend to what the agent *says*.
+- **Find the exact event that introduced a bug** (`bisect`).
+- **Share memory across different agents** — the memory belongs to the project, not the agent.
+- **Keep the project's history even when you switch agents or tools.**
 
 ---
 
-## ¿Listo para dejar de rehidratar a tu IA?
+## Why not just use normal memory / conversation history?
 
-No dejes que tu agente sea un ente volátil que se esfuma al primer problema.
+| | Chat history & vector memory | Observability (traces) | **CausaDB** |
+|---|---|---|---|
+| **What it records** | Prompts & conversations | LLM/tool call traces | **Real *effects* + decisions + system history** |
+| **Survives a session?** | Partially (stale after files change) | Yes, but it's traces | **Yes — append-only, immutable** |
+| **Can you verify a claim?** | No | Partially | **Yes — claims vs. recorded events** |
+| **Reconstructs *why*** | No | No | **Yes — decisions + reasoning** |
+| **Detects an agent lying ("DONE")** | No | No | **Yes, by discrepancy** |
+| **Where it lives** | Cloud / SaaS | Cloud / SaaS | **Local, offline, yours** |
 
-[Instalar en 1 minuto](#instalación) · [Documentación](docs/user_guide.md)
+There's a sea of products saying *"Your AI remembers."* Most of them mean: *"the user prefers dark mode."*
+
+CausaDB solves a different problem. It was built around:
+
+- what happened and **when**,
+- what decision was made and **why**,
+- what changed afterwards,
+- which agent did it and **what evidence exists**,
+- and how to **reconstruct the current state**.
+
+Normal memory *stores*. CausaDB **records effects, decisions and evidence** — cryptographically chained — so you can reconstruct and audit the history, not just recall it.
+
+The difference is between *"your agent remembers"* and *"you can prove what it did."*
+
+CausaDB is **local-first** and works alongside your existing AI tools, without forcing you to change models or vendors.
 
 ---
 
-## Instalación
+## Installation
 
 ```bash
 pip install causadb
 ```
 
-Sin Python instalado (compliance officers, traders, estudiantes): próximo binario standalone para Linux/macOS/Windows (en preparación para la primera release pública).
+No Python? (compliance officers, traders, students): standalone binaries for Linux/macOS/Windows are coming with the first public release.
 
-### Setup inicial (una vez por proyecto)
-
-```bash
-causadb setup /mi/proyecto          # init + hooks + vigilante + daemon, todo en uno
-```
-
-### Trabajo diario
+### Day-to-day
 
 ```bash
-causadb watch start --workspace /mi/proyecto --daemon   # vigilante + mcp-proxy + proxy LLM
-causadb revive                       # reconstruye estado + resume de contexto
-causadb trace /ruta/archivo.py 42    # ¿quién escribió esta línea?
-causadb impact --event-id <id>       # ¿qué rompo si revierto este evento?
-causadb why archivo.py:42            # atribución causal de la línea
-causadb score                        # ¿qué tan productiva fue la sesión? (0-100)
-causadb audit                        # ¿cuánto código sobrevive en git? (anti-teatro)
-causadb bisect --test "pytest tests" # evento exacto que introdujo un bug
-causadb dashboard                    # visualización web completa
-causadb watch stop                   # genera score + skills automáticamente
+causadb watch start --workspace /your/project --daemon  # watcher + mcp-proxy + LLM proxy
+causadb revive                       # reconstruct state + context summary
+causadb trace /path/file.py 42       # who wrote this line?
+causadb impact --event-id <id>       # what breaks if I revert this event?
+causadb why file.py:42               # causal attribution of the line
+causadb score                        # how productive was the session? (0-100)
+causadb audit                        # how much code survives in git? (anti-theatre)
+causadb bisect --test "pytest tests" # the exact event that introduced a bug
+causadb dashboard                    # full web dashboard
+causadb watch stop                   # auto-generates score + skills
 ```
 
 ---
 
-## Cómo funciona
+## How it works
 
-CausaDB es un **ledger causal append-only**: un registro encadenado criptográficamente (hash-chain) que va escribiendo todo lo que ocurre — archivos, comandos, decisiones, razonamiento — y no se puede alterar retroactivamente. Eso es lo que permite reconstruir y verificar en lugar de confiar.
+CausaDB is a **causal append-only ledger**: a cryptographically-chained (hash-chain) record that writes everything that happens — files, commands, decisions, reasoning — and cannot be altered retroactively. That's what lets you reconstruct and verify instead of trust.
 
-La memoria se organiza en tres niveles:
+Memory is organized in three tiers:
 
-- **Largo plazo:** el ledger inmutable (hash-chain criptográfica, append-only).
-- **Mediano plazo:** el working set reconstruible por replay determinista.
-- **Corto plazo:** el OCB (memoria de sesión) con detalle granular de archivos (snapshots pre/post).
+- **Long-term:** the immutable ledger (cryptographic hash-chain, append-only).
+- **Medium-term:** the working set, reconstructible by deterministic replay.
+- **Short-term:** OCB (session memory) with granular file detail (pre/post snapshots).
 
-### Herramientas clave
+### Key commands
 
-| Herramienta | Qué hace |
+| Command | What it does |
 |---|---|
-| `revive` | El agente vuelve a la vida con todo el contexto. No arranca de cero. |
-| `trace` / `why` / `impact` | ¿Quién tocó esta línea? ¿Qué rompo si revierto este cambio? |
-| `snapshot` + auto-archivo | Fotos pre/post de cada archivo — memoria granular del "qué había dentro". |
-| `resume` | El agente nuevo recibe el contexto de la sesión anterior. |
-| `score` | ¿Mi sesión fue productiva? 0-100 midiendo churn, waste y supervivencia de código. |
-| `skills` / `distill` | Patrones de trabajo aprendidos entre sesiones, reutilizables. |
-| `bisect` | Encontrar el evento exacto que introdujo un bug. |
-| `audit` / `audit-trail` | Audibilidad completa (EU AI Act, NIST AI RMF). |
-| `sentinel` / `validate` | Integridad del ledger — ¿se corrompió? ¿hay eventos inconsistentes? |
-| `watch --daemon` | El agente trabaja solo mientras vos no estás. Captura automática LLM + archivos + comandos. |
-| `undo` | Restaurar un archivo desde el último snapshot conocido bueno. |
-| 21 fuentes de harvest | Captura pasiva: shell, git, browser, ActivityWatch, MT5, Jupyter, Obsidian, Zotero, agentes de coding, n8n, Freqtrade y más. |
+| `revive` | Brings the agent back to life with full context. No start-from-zero. |
+| `trace` / `why` / `impact` | Who touched this line? What breaks if I revert this change? |
+| `snapshot` + auto-archive | Pre/post snapshots of every file — granular "what was inside" memory. |
+| `resume` | A new agent receives the previous session's context. |
+| `score` | Was my session productive? 0–100 measuring churn, waste and code survival. |
+| `skills` / `distill` | Work patterns learned across sessions, reusable. |
+| `bisect` | Find the exact event that introduced a bug. |
+| `audit` / `audit-trail` | Full auditability (EU AI Act, NIST AI RMF). |
+| `sentinel` / `validate` | Ledger integrity — corrupted? inconsistent events? |
+| `watch --daemon` | The agent works alone while you're away. Auto-captures LLM + files + commands. |
+| `undo` | Restore a file from the last known-good snapshot. |
+| 21 harvest sources | Passive capture: shell, git, browser, ActivityWatch, MT5, Jupyter, Obsidian, Zotero, coding agents, n8n, Freqtrade and more. |
 
-### Integración con agentes (MCP)
+### Agent integration (MCP)
 
-CausaDB expone un **MCP server con 21 tools + 4 recursos** (incluye `recover` para reconstruir el storyboard completo de una sesión desde la fuente cruda) que cualquier agente compatible invoca en 1 segundo:
+CausaDB exposes an **MCP server with 21 tools + 4 resources** (including `recover` to reconstruct a session's full storyboard from raw source) that any compatible agent invokes in a second:
 
 ```bash
-causadb opencode-config --project /mi/proyecto
+causadb opencode-config --project /your/project
 ```
 
-Esto genera `causadb.opencode.jsonc`. Agregalo a tu `opencode.jsonc`:
+This generates `causadb.opencode.jsonc`. Add it to your `opencode.jsonc`:
 
 ```jsonc
 {
@@ -154,163 +171,153 @@ Esto genera `causadb.opencode.jsonc`. Agregalo a tu `opencode.jsonc`:
       "command": ["python", "-m", "causadb.mcp.server"],
       "enabled": true,
       "environment": {
-        "CAUSADB_LEDGER_PATH": "/mi/proyecto/.causadb/ledger.log"
+        "CAUSADB_LEDGER_PATH": "/your/project/.causadb/ledger.log"
       }
     }
   }
 }
 ```
 
-#### Exponer el MCP por HTTP (agentes remotos)
+#### Expose the MCP over HTTP (remote agents)
 
-Además del transporte local (stdio), el MCP server se puede exponer por **HTTP (streamable-http)** para que un agente remoto (por ejemplo, en la nube) consulte la memoria del proyecto de forma segura:
+Beyond local stdio, the MCP server can be exposed over **HTTP (streamable-http)** so a remote agent (e.g. in the cloud) can safely consult the project's memory:
 
 ```bash
-causadb-mcp --transport streamable-http --host 127.0.0.1 --port 8000 --ledger /mi/proyecto/.causadb/ledger.log
+causadb-mcp --transport streamable-http --host 127.0.0.1 --port 8000 --ledger /your/project/.causadb/ledger.log
 ```
 
-Diseñado con seguridad por defecto:
-- **Bind-safety:** sin API key configurada (`CAUSADB_MCP_API_KEY`), se niega a escuchar en interfaces no-loopback. Sin key, solo tu máquina.
-- **Subconjunto de lectura:** expone solo `revive`, `query`, `ocb_status`, `validate`, `sentinel` y `shared_document_read` — no las tools de escritura (`log`, `shared_document_write`) ni las que exponen todo el contenido (`replay`, `state`).
-- **Coordinación agnóstica:** un agente remoto puede leer el plan de coordinación (`AUDIT_REPORT` / `ACTION_PLAN`) que otro agente escribió en tu máquina — la memoria de coordinación pertenece al proyecto, no al agente.
-- **Redacción:** los datos sensibles se redactan antes de devolverse.
-- **Agnóstico al cliente:** la misma interfaz sirve para OpenCode, Claude, Gemini CLI y agentes remotos compatibles con MCP.
+Secure by default:
+- **Bind-safety:** without an API key (`CAUSADB_MCP_API_KEY`), it refuses to listen on non-loopback interfaces. No key, your machine only.
+- **Read-only subset:** exposes only `revive`, `query`, `ocb_status`, `validate`, `sentinel` and `shared_document_read` — not the write tools (`log`, `shared_document_write`) nor the ones exposing everything (`replay`, `state`).
+- **Agnostic coordination:** a remote agent can read the coordination plan (`AUDIT_REPORT` / `ACTION_PLAN`) another agent wrote on your machine — coordination memory belongs to the project, not the agent.
+- **Redaction:** sensitive data is redacted before being returned.
+- **Client-agnostic:** the same interface works for OpenCode, Claude, Gemini CLI and remote MCP-compatible agents.
 
-#### Un canal de comunicación entre roles
+#### A communication channel between roles
 
-CausaDB es la memoria del proyecto: **las herramientas pueden cambiar, la memoria del proyecto sigue**. Eso habilita un patrón de colaboración que separa responsabilidades y ahorra tokens:
+CausaDB is the project's memory: **tools can change, the project's memory doesn't.** This enables a collaboration pattern that separates responsibilities and saves tokens:
 
-- **El ejecutor** trabaja en el proyecto, escribe su plan y ejecuta (acceso al código y al ledger).
-- **El observador** (por ejemplo, un modelo de frontera como ChatGPT) **lee** el plan por HTTP y te da su análisis — una segunda opinión que no interrumpe tu trabajo ni toca el código.
-- **Observa y opina, no escribe**: el observador lee el plan de coordinación (`AUDIT_REPORT` / `ACTION_PLAN`) pero no puede alterarlo. La integridad de la coordinación queda protegida.
+- **The executor** works on the project, writes its plan and executes (access to code and ledger).
+- **The observer** (e.g. a frontier model like ChatGPT) **reads** the plan over HTTP and gives its analysis — a second opinion that doesn't interrupt your work or touch the code.
+- **Observes and opines, doesn't write:** the observer reads the coordination plan (`AUDIT_REPORT` / `ACTION_PLAN`) but can't alter it. Coordination integrity stays protected.
 
-Ventajas: **división de responsabilidades** (cada uno aporta su visión; el observador filtra lo que el ejecutor, con la carga de orquestador, no ve) y **ahorro de tokens** (no hay que reescribir el contexto — el observador consulta la memoria del proyecto, no un prompt kilométrico).
+Benefits: **division of responsibilities** (each brings its own view; the observer catches what the executor, loaded with orchestration, misses) and **token savings** (no need to rewrite context — the observer reads the project's memory, not a kilometer-long prompt).
 
-### Adaptable a cualquier agente — aunque no hable MCP
+### Works with any agent — even without MCP
 
-CausaDB no te obliga a cambiar de herramienta: **es CausaDB la que se adapta a tus agentes**, no al revés.
+CausaDB doesn't force you to switch tools: **it adapts to your agents**, not the other way around.
 
-- **Agentes estándar (MCP):** OpenCode, Claude, Codex, Cursor y similares se conectan con el MCP server en un comando (ver arriba).
-- **Agentes sin MCP** (agentes conversacionales, skills, plugins): CausaDB se instala como una herramienta nativa más. Sin tocar el "cerebro" del agente — se deja un archivo de skill en su carpeta de habilidades y se habilita con una sola línea de configuración.
+- **Standard (MCP) agents:** OpenCode, Claude, Codex, Cursor and the like connect via the MCP server in one command (see above).
+- **Agents without MCP** (conversational agents, skills, plugins): CausaDB installs as one more native tool. It leaves a skill file in the agent's skills folder, enabled with a single config line.
 
-**Caso real — OpenJarvis:** un agente conversacional que tiene acceso a tu proyecto, conversa con vos sobre mejoras e ideas, busca en internet y refina tus prompts. CausaDB le agrega, en 1 minuto, una herramienta de **solo lectura** con la que puede:
+**Real case — OpenJarvis:** a conversational agent with access to your project, that discusses improvements and ideas, searches the web and refines your prompts. In one minute, CausaDB adds a **read-only** tool it can use to:
 
-- pedir el `revive` (resumen de contexto para retomar el trabajo),
-- auditar la memoria (`query`, `validate`, `sentinel`),
-- responder "¿quién escribió esta línea?" (`why`) o "¿qué depende de qué?" (`trace`),
-- consultar el estado de las sesiones (`ocb status`).
+- request `revive` (context summary to resume work),
+- audit memory (`query`, `validate`, `sentinel`),
+- answer "who wrote this line?" (`why`) or "what depends on what?" (`trace`),
+- check session state (`ocb status`).
 
-**Lo que hace a esto poderoso:** la memoria de CausaDB es **una sola por proyecto**. Todos tus agentes comparten la misma historia: lo que hizo OpenJarvis, OpenCode o cualquier otro queda en el mismo ledger, y cualquiera puede consultarlo. La información se comparte por el ledger, no por el agente.
+**Why this is powerful:** CausaDB's memory is **one per project**. All your agents share the same history — what OpenJarvis, OpenCode or anyone else did lands in the same ledger, and anyone can query it. Info is shared through the ledger, not through the agent.
 
-> **Lección de instalación:** la herramienta lee el ledger al que está conectado el proyecto. Si la historia vive en el proyecto principal, instalá CausaDB desde ahí (`causadb init` en esa carpeta) para que el agente audite la historia real — nunca la instales en una carpeta general vacía.
+> **Installation note:** the tool reads the ledger the project is connected to. If the history lives in the main project, install CausaDB from there (`causadb init` in that folder) so the agent audits the *real* history — never install it in a generic empty folder.
 
-### Coordinación Multi-Agente
+### Multi-agent coordination
 
-Cuando varios agentes trabajan sobre el mismo proyecto (Maker↔Checker, subagentes, equipos), CausaDB expone **dos anotadores compartidos** en `.causadb/coordination/`:
+When several agents work on the same project (Maker↔Checker, sub-agents, teams), CausaDB exposes **two shared annotators** in `.causadb/coordination/`:
 
-- **`AUDIT_REPORT`** — escribe el Auditor/Checker. Estados: `BORRADOR` / `APROBADO` / `RECHAZADO` / `REQUIERE_CAMBIOS`.
-- **`ACTION_PLAN`** — escribe el Coder/Maker. Estados: solicitud `APROBAR` / `OBJETAR`.
+- **`AUDIT_REPORT`** — written by the Auditor/Checker. States: `DRAFT` / `APPROVED` / `REJECTED` / `CHANGES_REQUESTED`.
+- **`ACTION_PLAN`** — written by the Coder/Maker. States: `APPROVE` / `OBJECT` requests.
 
-Se sobreescriben (el historial completo lo guarda el ledger vía `FILE_MODIFIED`). Se acceden con las tools MCP `shared_document_read` / `shared_document_write`.
+They're overwritten (the full history is kept by the ledger via `FILE_MODIFIED`). Accessed via the MCP tools `shared_document_read` / `shared_document_write`.
 
-**Flujo típico:** Maker escribe su plan en `ACTION_PLAN` → Checker lee, verifica y escribe el veredicto en `AUDIT_REPORT` → Maker ejecuta o ajusta. La traza completa de la coordinación queda en el ledger.
+**Typical flow:** Maker writes its plan to `ACTION_PLAN` → Checker reads, verifies and writes the verdict to `AUDIT_REPORT` → Maker executes or adjusts. The full coordination trace lives in the ledger.
 
-### Skills procedurales
+### Docs (canon)
 
-CausaDB incluye skills predefinidas que condensan patrones de uso de sus propias tools:
-
-| Skill | Qué hace | Disparador típico |
-|-------|----------|-------------------|
-| `state-reconstruction` | 9 patrones (P1–P9) para reconstruir estado desde el ledger | "¿Qué hizo el agente X?", "¿Por qué existe esta línea?", "Restaurar este archivo" |
-| `shared-workspace` | Coordinación multi-agente vía documentos compartidos | "Leer el plan de acción", "Escribir reporte de auditoría" |
-
-Se listan con `causadb_skill_list` (MCP) o `causadb distill`. Son 100% agnósticas — solo referencian tools de CausaDB, no dependen de ninguna herramienta de agente.
-
-### Documentación (canon)
-
-CausaDB incluye un **canon**: la doctrina mínima para que un agente (o un humano) interactúe correctamente con la memoria del proyecto — escalera de reconstrucción barato→caro, patrones de auditoría por evidencia (P1–P9) y reglas de gobernanza. Se lee con:
+CausaDB ships a **canon**: the minimal doctrine for an agent (or human) to interact correctly with the project's memory — a cheap-to-expensive reconstruction ladder, evidence-based audit patterns (P1–P9) and governance rules. Read it with:
 
 ```bash
 causadb canon          # CLI
 ```
 
-o el resource MCP `causadb://canon`. Se referencia automáticamente en el `revive` y en el setup de cada agente.
+or the MCP resource `causadb://canon`. It's referenced automatically in `revive` and in each agent's setup.
 
-### Dashboard web
+### Web dashboard
 
-Visualización completa sin consola: línea de tiempo humanizada, búsqueda, trace visual de causalidad, botón de revive, export de auditoría y métricas de sesión.
+Full visualization without a console: humanized timeline, search, visual causal trace, a revive button, audit export and session metrics.
 
 ---
 
-## Multi-plataforma
+## Platform support
 
-- **Linux:** soporte completo (double-fork nativo).
-- **macOS:** idéntico a Linux.
-- **Windows:** modo sin fork (subprocess). Degradación suave. *(Validación en máquina real pendiente — ver checklist pre-lanzamiento.)*
+- **Linux:** full support (native double-fork).
+- **macOS:** identical to Linux.
+- **Windows:** forkless mode (subprocess). Graceful degradation. *(Real-machine validation in progress — see pre-release checklist.)*
 
-### Estructura de archivos
+### Project layout
 
 ```
-/mi/proyecto/
+/your/project/
   .causadb/
-    ledger.log           # ledger causal (hash-chain, append-only)
-    dag.json             # cache DAG para trace/impact O(1)
-    CAUSADB_CHRONICLE.md # bitácora narrativa (append-only)
-    pids/                # PID files de daemons
-    logs/                # logs de daemons y proxy
-    blobs/               # snapshots y blobs content-addressed
-    ocb/                 # memoria de sesión particionada (OCB L1)
-    skills/              # cache reconstructible de skills (ledger-first)
-  causadb.opencode.jsonc # template MCP para OpenCode
+    ledger.log           # causal ledger (hash-chain, append-only)
+    dag.json             # DAG cache for O(1) trace/impact
+    CAUSADB_CHRONICLE.md # narrative log (append-only)
+    pids/                # daemon PID files
+    logs/                # daemon and proxy logs
+    blobs/               # content-addressed snapshots and blobs
+    ocb/                 # partitioned session memory (OCB L1)
+    skills/              # reconstructible skills cache (ledger-first)
+  causadb.opencode.jsonc # MCP template for OpenCode
 ```
 
-### Requisitos del sistema
+### Requirements
 
 - Python 3.10+
 - Linux, macOS, Windows
-- Sin dependencias externas (todo stdlib)
-- Vigilante (file watcher): `pip install watchdog` (opcional)
+- No external dependencies (all stdlib)
+- File watcher: `pip install watchdog` (optional)
 
 ---
 
-## Estado del proyecto
+## Status
 
-**En preparación para la primera release pública (v0.2.0-rc1).** Suite de ~2.135 tests, validación multi-plataforma en curso. Ver [releases](https://github.com/thebuilderpeligroso-netizen/causadb/releases) cuando estén publicados.
+**Preparing for the first public release (v0.2.0-rc1).** Test suite of ~2,135 tests; multi-platform validation in progress.
 
-> **Nota de transparencia:** este repositorio es la fuente oficial. La primera release pública (`v0.2.0-rc1`) aún no está taggeada — está en validación (incluida la prueba en Windows). El paquete pip `causadb` y los binarios standalone se publicarán junto con esa release.
+> **Transparency note:** this repo is the official source. The first public release (`v0.2.0-rc1`) isn't tagged yet — it's in validation (including the Windows run). The `causadb` pip package and standalone binaries ship together with that release.
 
-## Génesis: empezar en un proyecto ya comenzado
+**⭐ Star the repo to get notified of the first public release.**
+**🐛 Found a bug or a real pain this solves?** Open an issue — real feedback shapes the first release.
 
-CausaDB funciona con la mayor fidelidad cuando se instala **desde el día 1** de un proyecto. Si lo instalás al comienzo, registra cada archivo, comando, decisión y razonamiento en el momento en que ocurren — la historia completa queda en el ledger.
+## Genesis: onboarding an already-started project
 
-Si ya tenés un proyecto **con meses de historia** y recién ahora lo incorporás a CausaDB, el **Génesis** reconstruye el contexto que puede recuperar de lo que ya existe: la estructura del código, los commits de git, los archivos y las notas de Obsidian. Es una reconstrucción **robusta pero no completa**: lo que pasó en conversaciones de agentes o procesos que no dejaron rastro en disco no se puede recuperar (ese detalle está en la sección [Limitaciones Conocidas](#limitaciones-conocidas)).
+CausaDB works with the highest fidelity when installed **from day 1** of a project. Install it at the start and it records every file, command, decision and reasoning as it happens — the full history lands in the ledger.
 
-En criollo:
+If you already have a project **with months of history** and now onboard it to CausaDB, **Genesis** reconstructs what it can from what already exists: code structure, git commits, files and Obsidian notes. It's a **robust but incomplete** reconstruction: conversations or processes that left no trace on disk can't be recovered (details in [Known Limitations](#known-limitations)).
 
-> **Un proyecto puede sobrevivir tres meses sin CausaDB. Pero un proyecto con CausaDB instalado desde el día 1 no solo sobrevive — se vuelve más confiable que cualquier otro proyecto.**
+> **A project can survive three months without CausaDB. But a project with CausaDB installed from day 1 doesn't just survive — it becomes more reliable than any other project.**
 
-La memoria completa y verificable es el valor diferencial: cuanto antes lo instalás, más historia fiel y trazable acumulás.
+Complete, verifiable memory is the differentiator: the earlier you install it, the more faithful and traceable the history you accumulate.
 
-## 📚 Documentación
+## 📚 Documentation
 
-- [Guía de Usuario](docs/user_guide.md) — Primeros pasos, instalación, comandos útiles (español)
-- [Preguntas Frecuentes](docs/faq.md) — FAQ sobre privacidad, precios, errores comunes
-- [Solución de Problemas](docs/troubleshooting.md) — Errores típicos y cómo resolverlos
-
----
-
-## Limitaciones Conocidas
-
-Transparencia sobre los límites actuales del producto, en orden de impacto:
-
-1. **Génesis reconstruye estructura, no conversaciones.** Si incorporás un proyecto con historia ya comenzada, el [Génesis](#génesis-empezar-en-un-proyecto-ya-comenzado) reconstruye la estructura (archivos, commits git, Obsidian) con alta fidelidad, pero **no puede recuperar conversaciones de agentes ni decisiones que solo viven en el storage privado de las sesiones pasadas**. La fidelidad completa solo se alcanza instalando CausaDB desde el día 1.
-
-2. **Atribución de identidad parcial (¿quién tocó qué?).** El ledger registra **qué** cambió siempre (vía harvester pasivo), y **quién** cuando el cambio pasa por un agente que firma su `session_id`. Pero los **borrados del filesystem watcher** (`source="harvester:filesystem"`) no llevan actor: el contenido borrado es irrecuperable y no se atribuye a nadie. La correlación `TOOL_CALLED ↔ FILE_MODIFIED` y la firma HMAC (`_attribution.py`) existen pero no están activadas en producción. Está en el roadmap como deuda #22.
-
-3. **`undo` frente a estados intermedios rotos.** `undo` restaura al último estado que difiere del contenido actual en disco (cruzando disco + ledger). Si el historial contiene un snapshot intermedio "roto" seguido de uno bueno, `undo` puede no elegir automáticamente el último realmente válido — no valida el contenido del código. Para esos casos, el [canon](docs/canon.md) documenta el ritual manual de restauración (patrón P3).
-
-4. **Windows en validación.** El soporte de Windows degrada a modo sin fork (subprocess). La validación en máquina real con la CI multi-plataforma está en curso antes de la primera release.
+- [User Guide](docs/user_guide.md)
+- [FAQ](docs/faq.md)
+- [Troubleshooting](docs/troubleshooting.md)
 
 ---
 
-*Última actualización: 08/09/2026*
+## Known Limitations
+
+Transparency about the current limits of the product, in order of impact:
+
+1. **Genesis reconstructs structure, not conversations.** Onboarding a project with existing history recovers structure (files, git commits, Obsidian) at high fidelity, but **cannot recover agent conversations or decisions that only live in past sessions' private storage.** Full fidelity is only achieved by installing CausaDB from day 1.
+
+2. **Partial identity attribution (who touched what?).** The ledger always records **what** changed (via passive harvester), and **who** when the change passes through an agent that signs its `session_id`. But **filesystem watcher deletions** (`source="harvester:filesystem"`) carry no actor: deleted content is unrecoverable and unattributed. The `TOOL_CALLED ↔ FILE_MODIFIED` correlation and HMAC signing (`_attribution.py`) exist but aren't enabled in production. It's on the roadmap as debt #22.
+
+3. **`undo` against broken intermediate states.** `undo` restores to the last state that differs from on-disk content (crossing disk + ledger). If the history contains a "broken" intermediate snapshot followed by a good one, `undo` may not automatically pick the last truly-valid one — it doesn't validate code content. For those cases, the [canon](docs/canon.md) documents the manual restore ritual (pattern P3).
+
+4. **Windows in validation.** Windows support degrades to forkless mode (subprocess). Real-machine validation with the multi-platform CI is in progress before the first release.
+
+---
+
+*Last updated: 2026-09-11*
