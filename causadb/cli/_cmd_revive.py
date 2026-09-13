@@ -604,7 +604,12 @@ def _generate_revive_markdown(data: Dict[str, Any]) -> str:
         lines.append(f"- **Survival:** {score.get('survival_score', 'N/A')}/100")
         score_warnings = score.get("warnings", [])
         if score_warnings:
-            lines.append(f"- **Warnings:** {', '.join(score_warnings)}")
+            snap_missing = [w for w in score_warnings if "no_snapshots_for_" in w]
+            other = [w for w in score_warnings if "no_snapshots_for_" not in w]
+            if snap_missing:
+                lines.append(f"- **Warnings:** {len(snap_missing)} eventos sin snapshot (no_snapshots_for_*)")
+            if other:
+                lines.append(f"- **Warnings:** {', '.join(other)}")
         lines.append("")
 
     # Daemon status section
