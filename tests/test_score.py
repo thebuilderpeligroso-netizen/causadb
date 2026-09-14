@@ -80,13 +80,13 @@ def test_compute_churn_counts_lines_with_snapshots(ledger_path, tmp_path):
 
     ws = tmp_path / "ws"
     ws.mkdir()
-    (ws / "a.py").write_text("a = 1\n")
+    (ws / "a.py").write_text("a = 1\nb = 2\n")
     pre_snap = WorkspaceSnapshot.take(str(ws))
     store = BlobStore(str(tmp_path / "blobs"))
     pre_hash = WorkspaceSnapshot.store(pre_snap, store, root_dir=str(ws))
 
-    # Modify + add a file.
-    (ws / "a.py").write_text("a = 1\nb = 2\n")  # modified
+    # Shrink a.py (deletion churn) + add a file.
+    (ws / "a.py").write_text("a = 1\n")         # modified (shrunk)
     (ws / "b.py").write_text("c = 3\n")         # added
     post_snap = WorkspaceSnapshot.take(str(ws), prev_snapshot=pre_snap)
     post_hash = WorkspaceSnapshot.store(post_snap, store, root_dir=str(ws))
@@ -162,7 +162,7 @@ def test_anti_teatro_churn_zero_silent(ledger_path):
     writer = LedgerWriter(ledger_path)
     writer.append(_make_file_modified(
         path="/foo.py", action="create",
-        writes=[{"path": "/foo.py", "lines_added": 10, "lines_deleted": 0}],
+        writes=[{"path": "/foo.py", "lines_added": 10, "lines_deleted": 5}],
     ))
 
     # Real implementation must produce non-zero churn.
@@ -327,11 +327,11 @@ def test_compute_score_weights_respected(ledger_path):
         score_weight_waste=0.0,
         score_weight_survival=0.5,
     )
-    # Add churn (fallback path).
+    # Add churn (fallback path): 100 added + 50 deleted → ratio 50/150.
     writer = LedgerWriter(ledger_path)
     writer.append(_make_file_modified(
         path="/foo.py", action="create",
-        writes=[{"path": "/foo.py", "lines_added": 100, "lines_deleted": 0}],
+        writes=[{"path": "/foo.py", "lines_added": 100, "lines_deleted": 50}],
     ))
     result = compute_score(ledger_path, config=config)
     w = result["weights_used"]
@@ -480,3 +480,99 @@ def test_compute_waste_multi_session_no_llm_second(ledger_path):
     score = compute_score(ledger_path)
     assert "overall_score" in score
     assert "ctx-2" in score["per_session"]
+
+
+# ---------------------------------------------------------------------------
+# churn_ratio semantics tests (fix: deleted/total, not total/(total+1))
+# ---------------------------------------------------------------------------
+
+def test_churn_ratio_zero_when_no_deletions(ledger_path):
+    """Session with writes but zero deletions → churn_ratio == 0.0.
+
+    Semantics: churn_ratio = lines_deleted / (lines_added + lines_deleted).
+    0.0 = healthy (nothing deleted), 1.0 = full rewrite.
+    """
+    writer = LedgerWriter(ledger_path)
+    writer.append(_make_file_modified(
+        path="/foo.py", action="create",
+        writes=[{"path": "/foo.py", "lines_added": 100, "lines_deleted": 0}],
+    ))
+    result = compute_churn(ledger_path)
+    s = result["ctx-1"]
+    assert s["lines_added"] == 100
+    assert s["lines_deleted"] == 0
+    assert s["churn_ratio"] == 0.0, (
+        f"no deletions → churn_ratio must be 0.0, got {s['churn_ratio']}"
+    )
+    # Via compute_score: churn_score must be perfect (100.0).
+    score = compute_score(ledger_path)
+    assert score["churn_score"] == 100.0, (
+        f"no deletions → churn_score must be 100.0, got {score['churn_score']}"
+    )
+
+
+def test_churn_ratio_partial_deletions(ledger_path):
+    """100 added + 50 deleted → churn_ratio == 50/150 (deleted/total)."""
+    writer = LedgerWriter(ledger_path)
+    writer.append(_make_file_modified(
+        path="/foo.py", action="modify",
+        writes=[{"path": "/foo.py", "lines_added": 100, "lines_deleted": 50}],
+    ))
+    result = compute_churn(ledger_path)
+    s = result["ctx-1"]
+    assert s["lines_added"] == 100
+    assert s["lines_deleted"] == 50
+    assert s["churn_ratio"] == pytest.approx(50 / 150), (
+        f"churn_ratio must be deleted/total = 50/150, got {s['churn_ratio']}"
+    )
+
+
+def test_churn_ratio_full_rewrite(ledger_path):
+    """0 added + 50 deleted → churn_ratio == 1.0, churn_score == 0.0."""
+    writer = LedgerWriter(ledger_path)
+    writer.append(_make_file_modified(
+        path="/foo.py", action="delete",
+        writes=[{"path": "/foo.py", "lines_added": 0, "lines_deleted": 50}],
+    ))
+    result = compute_churn(ledger_path)
+    s = result["ctx-1"]
+    assert s["lines_added"] == 0
+    assert s["lines_deleted"] == 50
+    assert s["churn_ratio"] == 1.0, (
+        f"full rewrite → churn_ratio must be 1.0, got {s['churn_ratio']}"
+    )
+    score = compute_score(ledger_path)
+    assert score["churn_score"] == 0.0, (
+        f"full rewrite → churn_score must be 0.0, got {score['churn_score']}"
+    )
+
+
+def test_churn_aggregation_ledger_level(ledger_path):
+    """Two sessions with different ratios → ledger-level aggregation is
+    weighted by total lines: (0.0*100 + 1.0*50) / 150 = 50/150."""
+    writer = LedgerWriter(ledger_path)
+    # Session A: 100 added, 0 deleted → ratio 0.0.
+    writer.append(_make_file_modified(
+        ctx_id="sess-A", path="/a.py", action="create",
+        writes=[{"path": "/a.py", "lines_added": 100, "lines_deleted": 0}],
+    ))
+    # Session B: 0 added, 50 deleted → ratio 1.0.
+    writer.append(_make_file_modified(
+        ctx_id="sess-B", path="/b.py", action="delete",
+        writes=[{"path": "/b.py", "lines_added": 0, "lines_deleted": 50}],
+    ))
+    score = compute_score(ledger_path)
+    # Per-session ratios must reflect the new semantics.
+    assert score["per_session"]["sess-A"]["churn_ratio"] == 0.0, (
+        f"sess-A (no deletions) ratio must be 0.0, "
+        f"got {score['per_session']['sess-A']['churn_ratio']}"
+    )
+    assert score["per_session"]["sess-B"]["churn_ratio"] == 1.0, (
+        f"sess-B (full rewrite) ratio must be 1.0, "
+        f"got {score['per_session']['sess-B']['churn_ratio']}"
+    )
+    # Ledger-level churn_score: weighted by total lines → 1 - 50/150.
+    assert score["churn_score"] == pytest.approx(100.0 * (1.0 - 50 / 150)), (
+        f"ledger churn_score must be weighted by total lines, "
+        f"got {score['churn_score']}"
+    )

@@ -172,7 +172,7 @@ def compute_churn(ledger_path: str, config=None, *, entries=None) -> Dict[str, D
             "files_churned": int,
             "lines_added": int,
             "lines_deleted": int,
-            "churn_ratio": float,   # lines_changed / (lines_added + lines_deleted + 1e-9)
+            "churn_ratio": float,   # lines_deleted / (lines_added + lines_deleted); 0.0 = no churn, 1.0 = full rewrite
             "warnings": [str, ...],
           },
           ...
@@ -247,13 +247,15 @@ def compute_churn(ledger_path: str, config=None, *, entries=None) -> Dict[str, D
                 # If neither writes nor path → nothing to count, no warning.
 
         total_lines = lines_added + lines_deleted
-        # churn_ratio: fraction of churned lines relative to total activity.
-        # We define it as (lines_added + lines_deleted) / (total_lines + 1)
-        # so a session with real churn approaches 1.0 and a session with no
-        # churn is 0.0. The +1 avoids division by zero but does NOT mask
-        # real churn (anti-teatro: a stub that skips the diff collapses
-        # this to 0 and is caught by the anti-teatro test).
-        churn_ratio = total_lines / (total_lines + 1.0) if total_lines > 0 else 0.0
+        # churn_ratio: fraction of changed lines that were DELETED.
+        # 0.0 = healthy (nothing deleted), 1.0 = full rewrite (everything
+        # written was rolled back). The score penalty uses this ratio
+        # directly (churn_score = 100 * (1 - churn_ratio)), so a session
+        # with pure additions must NOT be punished. Anti-teatro: a stub
+        # that skips the diff collapses lines_deleted to 0 → ratio 0.0,
+        # which is caught by the dedicated semantics tests in
+        # tests/test_score.py (test_churn_ratio_*).
+        churn_ratio = (lines_deleted / total_lines) if total_lines > 0 else 0.0
 
         result[ctx] = {
             "files_churned": files_churned,
