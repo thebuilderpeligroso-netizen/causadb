@@ -3,7 +3,15 @@
 > **Español:** [README en español](README.es.md)
 
 <p align="center">
-  <strong>Switch agents without losing your project's context. One verifiable history of what your agents did — regardless of which tool you use.</strong>
+  <strong>Switch agents without losing your project's context. One verifiable history of what happened — regardless of which tool you use.</strong>
+</p>
+
+<p align="center">
+  Your agents can change. Your project's history shouldn't.
+</p>
+
+<p align="center">
+  A context window only remembers what is still inside the session. CausaDB keeps the project's history outside the session.
 </p>
 
 <p align="center">
@@ -14,7 +22,18 @@
 </p>
 
 <p align="center">
+  <em>Fresh agent. Same project. No briefing. Watch it reconstruct where the project left off.</em>
+</p>
+
+<p align="center">
   <img src="docs/assets/demo.gif" alt="CausaDB reviving and reconstructing a project's history" width="800">
+</p>
+
+<p align="center">
+  Agents do the work.<br>
+  Git stores versions.<br>
+  Tests verify behavior.<br>
+  <strong>CausaDB remembers how the project got there.</strong>
 </p>
 
 ---
@@ -25,7 +44,7 @@ You're working with an AI agent, deep in the code… and then everything goes da
 
 When you come back, the agent is a stranger. It lost the context, forgot the critical details, and you start from zero. You try to "rehydrate" it, but it doesn't remember what was obvious 20 minutes ago.
 
-**The agent doesn't have amnesia because the context window is too small. It has amnesia because nobody recorded what happened.**
+**Nobody recorded what happened — so every session starts from zero.**
 
 It changes files, runs commands, makes decisions, reasons — and it all evaporates with the session.
 
@@ -67,6 +86,19 @@ That's not promised. It's demonstrated.
 
 ---
 
+## What CausaDB remembers
+
+Not just context — verifiable history. Ask what happened:
+
+- **What changed**, when, and which agent/task did it.
+- **Why it changed** — the decision and reasoning behind it.
+- **What evidence existed** at the time.
+- **What was verified** afterwards — and what depends on it now.
+
+Other memory tools say *"your agent remembers."* CausaDB says *"your project remembers how it got here."*
+
+---
+
 ## What you can do with it
 
 - **Recover context** after an interrupted session — no more starting from zero.
@@ -86,7 +118,7 @@ That's not promised. It's demonstrated.
 | **Survives a session?** | Partially (stale after files change) | Yes, but it's traces | **Yes — append-only, immutable** |
 | **Can you verify a claim?** | No | Partially | **Yes — claims vs. recorded events** |
 | **Reconstructs *why*** | No | No | **Yes — decisions + reasoning** |
-| **Detects an agent lying ("DONE")** | No | No | **Yes, by discrepancy** |
+| **Catches false "DONE" reports (verification)** | No | No | **Yes, by discrepancy** |
 | **Where it lives** | Cloud / SaaS | Cloud / SaaS | **Local, offline, yours** |
 
 There's a sea of products saying *"Your AI remembers."* Most of them mean: *"the user prefers dark mode."*
@@ -326,4 +358,4 @@ Transparency about the current limits of the product, in order of impact:
 
 ---
 
-*Last updated: 2026-09-11*
+*Last updated: 2026-09-16*

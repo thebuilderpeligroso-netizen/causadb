@@ -3,10 +3,25 @@
 ### Cambiá de agente sin perder el contexto del proyecto.
 
 <p align="center">
+  <em>Agente nuevo. Mismo proyecto. Sin explicación. Mirá cómo reconstruye dónde quedó el proyecto.</em>
+</p>
+
+<p align="center">
   <img src="docs/assets/demo.gif" alt="CausaDB reviviendo y reconstruyendo la historia de un proyecto" width="800">
 </p>
 
+<p align="center">
+  Los agentes hacen el trabajo.<br>
+  Git guarda versiones.<br>
+  Los tests verifican comportamiento.<br>
+  <strong>CausaDB recuerda cómo llegó el proyecto hasta ahí.</strong>
+</p>
+
 CausaDB guarda una historia verificable de tu proyecto, para que pases de Claude Code a OpenCode, Gemini CLI u otra herramienta sin empezar de cero.
+
+Tus agentes pueden cambiar. La historia de tu proyecto no.
+
+Una ventana de contexto solo recuerda lo que sigue dentro de la sesión. CausaDB guarda la historia del proyecto fuera de la sesión.
 
 **No es memoria de un agente. Es memoria del proyecto.**
 
@@ -40,6 +55,19 @@ Y acá está lo que una memoria común no hace: **podés verificar lo que el age
 - *"Le dimos un proyecto que el agente no conocía. En lugar de explicarle la historia, dejamos que reconstruyera qué había pasado usando CausaDB. Y lo reconstruyó."*
 
 Eso no se promete. Se demuestra.
+
+---
+
+## Qué recuerda CausaDB
+
+No solo contexto — historia verificable. Preguntá qué pasó:
+
+- **Qué cambió**, cuándo, y qué agente/tarea lo hizo.
+- **Por qué cambió** — la decisión y el razonamiento detrás.
+- **Qué evidencia existía** en ese momento.
+- **Qué se verificó** después — y qué depende de eso hoy.
+
+Otras memorias dicen *"tu agente recuerda."* CausaDB dice *"tu proyecto recuerda cómo llegó hasta acá."*
 
 ---
 
@@ -317,4 +345,4 @@ Transparencia sobre los límites actuales del producto, en orden de impacto:
 
 ---
 
-*Última actualización: 08/09/2026*
+*Última actualización: 16/09/2026*
