@@ -275,7 +275,7 @@ def test_serve_stop_on_legacy_serve_without_pidfile_with_pgrep(tmp_path):
     )
 
 
-def test_serve_start_daemon_port_in_use_emits_hint(tmp_path):
+def test_serve_start_daemon_port_in_use_emits_hint(tmp_path, monkeypatch):
     """serve start --daemon con bind-fail post-fork emite hint con pkill.
 
     Contrato dual BIT-CHR.121 para puerto ocupado:
@@ -288,9 +288,13 @@ def test_serve_start_daemon_port_in_use_emits_hint(tmp_path):
 
     Aca SI se mockea daemonize (el proposito del test es el handler del
     OSError post-fork, no validar el fork).
+
+    Fase 2: serve exige auth — se provee key para probar el resto del flujo.
     """
     from causadb.cli import _cmd_serve
 
+    monkeypatch.setenv("CAUSADB_API_KEY", "test-key-12345678")
+    monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
     ledger = _init_workspace(tmp_path)
     remove_pidfile("serve")
 
@@ -332,16 +336,20 @@ def test_serve_start_daemon_port_in_use_emits_hint(tmp_path):
     )
 
 
-def test_serve_start_port_busy_preventive_returns_already_running(tmp_path):
+def test_serve_start_port_busy_preventive_returns_already_running(tmp_path, monkeypatch):
     """BIT-CHR.121 rama preventiva: puerto ocupado ⇒ rc0 already_running,
     serve() NUNCA se invoca.
 
     Discriminador anti-teatro: mock_serve.assert_not_called() garantiza que
     si alguien borra el chequeo preventivo de _cmd_serve._serve_start, el
     test falla (el flujo seguiria hasta serve()).
+
+    Fase 2: serve exige auth — se provee key para probar el resto del flujo.
     """
     from causadb.cli import _cmd_serve
 
+    monkeypatch.setenv("CAUSADB_API_KEY", "test-key-12345678")
+    monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
     ledger = _init_workspace(tmp_path)
     remove_pidfile("serve")
 
@@ -358,14 +366,18 @@ def test_serve_start_port_busy_preventive_returns_already_running(tmp_path):
     mock_serve.assert_not_called()
 
 
-def test_serve_start_foreground_does_not_daemonize(tmp_path):
+def test_serve_start_foreground_does_not_daemonize(tmp_path, monkeypatch):
     """serve start sin --daemon NO llama daemonize (back-compat).
 
     Discriminatorio: si por error el path foreground se vuelve daemonizado,
     el test falla (daemonize.assert_not_called()).
+
+    Fase 2: serve exige auth — se provee key para probar el resto del flujo.
     """
     from causadb.cli import _cmd_serve
 
+    monkeypatch.setenv("CAUSADB_API_KEY", "test-key-12345678")
+    monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
     ledger = _init_workspace(tmp_path)
     remove_pidfile("serve")
 
@@ -657,12 +669,17 @@ def test_restart_picks_up_new_code(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_setup_handles_serve_port_in_use(tmp_path):
+def test_setup_handles_serve_port_in_use(tmp_path, monkeypatch):
     """setup no crashea si el serve falla por puerto ocupado.
 
     setup delega a watch start, que lanza serve como subproceso. Si el
     puerto esta ocupado, serve falla pero watch start reporta
     serve: failed sin propagar (degradacion suave).
+
+    Fase 2: serve exige auth — se provee key para el resto del flujo.
+    El puerto ocupado se simula con _is_serve_already_running=True
+    (evita el poll de 10s de _start_daemon_service y hace el test
+    determinista bajo pytest-timeout=10).
     """
     from causadb.cli import _cmd_setup
 
@@ -685,19 +702,23 @@ def test_setup_handles_serve_port_in_use(tmp_path):
     with patch("causadb.cli._cmd_watch.get_daemon", return_value=mock_daemon):
         with patch("causadb.cli._cmd_watch.subprocess.Popen", return_value=mock_proc):
             with patch("causadb.cli._cmd_watch._detect_and_write_resume", return_value=None):
-                with patch("causadb._shell_hook.install", return_value=True):
-                    with patch("causadb._git_hook.git_dir_from_workspace", return_value=None):
-                        with patch("causadb._telemetry.set_enabled"):
-                            with patch("causadb._daemon_service.install_service", return_value=(False, "skip")):
-                                args = argparse.Namespace(
-                                    project_dir=str(project),
-                                    no_hook=False,
-                                    no_git=True,
-                                    no_watch=False,
-                                    no_daemon=True,
-                                    integrations=None,
-                                )
-                                code, out = _cmd_setup.cmd_setup(args)
+                with patch(
+                    "causadb.cli._cmd_watch._is_serve_already_running",
+                    return_value=True,
+                ):
+                    with patch("causadb._shell_hook.install", return_value=True):
+                        with patch("causadb._git_hook.git_dir_from_workspace", return_value=None):
+                            with patch("causadb._telemetry.set_enabled"):
+                                with patch("causadb._daemon_service.install_service", return_value=(False, "skip")):
+                                    args = argparse.Namespace(
+                                        project_dir=str(project),
+                                        no_hook=False,
+                                        no_git=True,
+                                        no_watch=False,
+                                        no_daemon=True,
+                                        integrations=None,
+                                    )
+                                    code, out = _cmd_setup.cmd_setup(args)
 
     assert code == 0, "setup no debe crashear aunque serve falle"
     payload = json.loads(out)

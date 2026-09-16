@@ -244,13 +244,13 @@ class WorkspaceSnapshot:
                     content = cls._read_file(abs_path)
                 except OSError:
                     continue
-                blob_sha = blob_store.put({
+                blob_sha = blob_store.put_redacted({
                     "file_hash": file_hash,
                     "content_b64": base64.b64encode(content).decode("ascii"),
                 })
                 blob_refs[file_hash] = blob_sha
         snapshot["blob_refs"] = blob_refs
-        return blob_store.put(snapshot)
+        return blob_store.put_redacted(snapshot)
 
     @classmethod
     def restore(cls, snapshot_hash: str, blob_store: BlobStore,

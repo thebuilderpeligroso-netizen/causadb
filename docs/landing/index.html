@@ -233,6 +233,62 @@
             margin-top: calc(var(--spacing-base) * 8);
         }
 
+        .grid--two-columns {
+            display: grid;
+            gap: calc(var(--spacing-base) * 10);
+            grid-template-columns: repeat(2, 1fr);
+            margin-top: calc(var(--spacing-base) * 8);
+        }
+
+        .grid--three-columns {
+            display: grid;
+            gap: calc(var(--spacing-base) * 10);
+            grid-template-columns: repeat(3, 1fr);
+            margin-top: calc(var(--spacing-base) * 8);
+        }
+
+        .grid-cards {
+            display: grid;
+            gap: calc(var(--spacing-base) * 10);
+            grid-template-columns: repeat(2, 1fr);
+            margin-top: calc(var(--spacing-base) * 8);
+        }
+
+        .card__eyebrow {
+            font-size: 14px;
+            letter-spacing: 2px;
+            color: var(--color-accent);
+            text-transform: uppercase;
+            margin-bottom: calc(var(--spacing-base) * 2);
+        }
+
+        .card__title {
+            margin-top: 0;
+        }
+
+        .card__body {
+            font-size: var(--typography-body);
+            color: var(--color-text-secondary);
+            line-height: var(--line-height-base);
+        }
+
+        .section__highlight {
+            background-color: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 12px;
+            padding: calc(var(--spacing-base) * 8);
+            margin-top: calc(var(--spacing-base) * 8);
+        }
+
+        .story__prose a {
+            color: var(--color-accent);
+        }
+
+        nav .hero__cta {
+            margin-top: 0;
+            padding: 8px 16px;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -412,7 +468,7 @@
                 <li><a href="#how">Cómo funciona</a></li>
                 <li><a href="#differentiators">Diferenciadores</a></li>
                 <li><a href="#agents">Agentes externos</a></li>
-                <li><a href="#" class="hero__cta hero__cta--secondary">Comenzar</a></li>
+                <li><a href="https://github.com/thebuilderpeligroso-netizen/causadb" target="_blank" rel="noopener noreferrer" class="hero__cta hero__cta--secondary">Comenzar</a></li>
             </ul>
         </div>
     </nav>
@@ -423,29 +479,19 @@
         <div class="hero__eyebrow">La memoria de tu proyecto para agentes de IA</div>
         <h1 class="hero__title">Cambiá de agente sin perder el contexto</h1>
         <p class="hero__subtitle">CausaDB guarda una historia verificable de tu proyecto — qué hizo cada agente, cómo y por qué — para que pases de Claude Code a OpenCode, Gemini CLI u otra herramienta sin empezar de cero.</p>
-        <a href="#" class="hero__cta hero__cta--primary">Comenzar con CausaDB</a>
-        <a href="#" class="hero__cta hero__cta--secondary">Ver cómo funciona</a>
+        <a href="https://github.com/thebuilderpeligroso-netizen/causadb" target="_blank" rel="noopener noreferrer" class="hero__cta hero__cta--primary">Comenzar con CausaDB</a>
+        <a href="#demo" class="hero__cta hero__cta--secondary">Ver cómo funciona</a>
         <p class="hero__muted">Todo local y offline. Sin nube, sin subir tus datos.</p>
     </div>
 </section>
 
-<section id="story" class="eyebrow section story">
+<section id="story" class="section">
     <div class="container">
     <h2 class="section__eyebrow">La historia</h2>
     <h3 class="section__title">Estaba trabajando de Uber y me hice un planteo que no me largaba.</h3>
     <div class="story__prose" style="max-width: 700px; margin: 0 auto; text-align: left;">
-        <p><span class="hl">No estaba conforme con mi vida:</span> la paga era poca para las horas que le metía, mi vida social en segundo plano — hasta nula, había vuelto a vivir en la casa de mis padres y no conseguía otro trabajo. Tenía mucho tiempo libre para pensar, entre viaje y viaje.</p>
-        <p>Y me pregunté qué me gustaba hacer. Qué podía hacer durante horas sin que se sintiera como una obligación, sino porque me gustaba. Llegué a la conclusión de que era estar en la computadora. Algo que había dejado hace mucho. Y descubrí que se podía hacer dinero de esa manera.</p>
-        <p>Empecé con un curso de productos digitales: "Hacelos con inteligencia artificial, ella hace todo por vos, es una herramienta fantástica". Me di cuenta de que la tecnología había avanzado y yo ya no era tan rápido con el teclado. Tenía mucho que aprender.</p>
-        <p>Empecé con unos PDF para vender. Me salió una app sin backend, de casualidad. Y empecé a percibir que podía hacer mucho más sin tener tanto conocimiento. El conocimiento ya venía con la IA — o eso creía.</p>
-        <p>Entonces me embarqué en algo más ambicioso. Estaban de moda los chatbots, pero no había nada personalizado. Intenté con eso. Y cuando le faltaba poco para que la probaran, me di un golpazo. Fue muy duro: descubrí que mi proyecto estaba roto por todos lados. Dos días de frustración sin querer tocar un teclado. Impotencia y enojo, culpando primero a la IA. "¿Por qué no me avisó? ¿Por qué no se dio cuenta, si tenía la documentación?" Pero no me di por vencido.</p>
-<p><span class="hl">La IA es muy buena como herramienta, pero como toda herramienta, hay que saber utilizarla.</span></p>
-<p>Le empecé a dar reglas, porque las sigue. Empecé a ser más estructurado, para equivocarme menos. Pero la falencia más grande, la más difícil de cubrir, era mi falta de memoria.</p>
-        <p>Y ahí lo vi claro: si mejoraba la memoria de la inteligencia artificial, ella iba a poder cubrir mi falta de memoria.</p>
-        <p>Así que decidí cubrir ese aspecto. <span class="hl">Darle memoria.</span></p>
-        <p>Así nació lo que hoy construí: CausaDB, construido con CausaDB. Es el producto al que tenés acceso ahora, para conseguir la ventaja que yo no tuve en ese primer proyecto ambicioso en el que me había embarcado para comenzar este viaje.</p>
-        <p>Arranqué por el dinero, no te lo voy a negar. Pero hoy lo que me mueve es otra cosa: que tu proyecto sea más sano que el mío. Que no descubras el tuyo roto por todos lados a último momento, ni pases dos días sin querer tocar un teclado. Si te ahorro un dolor de cabeza, esto ya valió la pena.</p>
-        <p><span class="hl">¿No me crees? Vení, te muestro.</span></p>
+        <p>Empecé manejando un Uber, sin saber programar bien, y un proyecto con IA se me rompió por todos lados sin que nadie me avisara. Ahí entendí lo que faltaba: <span class="hl">memoria.</span> Por eso construí CausaDB.</p>
+        <p><a href="#founder-story">Leer la historia completa</a></p>
     </div>
     </div>
 </section>
@@ -493,7 +539,7 @@
             Tu navegador no soporta video.
         </video>
     </div>
-    <p class="hero__muted">Demostración real · sin audio · 9 minutos</p>
+    <p class="hero__muted">Demostración real · sin audio · 2 minutos</p>
     </div>
 </section>
 
@@ -712,6 +758,28 @@
     </div>
 </section>
 
+    <!-- SECTION: FOUNDER-STORY -->
+    <section id="founder-story" class="section">
+        <div class="container">
+        <div class="section__eyebrow">La historia completa</div>
+        <h2 class="section__title">Por qué existe CausaDB</h2>
+        <div class="story__prose" style="max-width: 700px; margin: 0 auto; text-align: left;">
+        <p><span class="hl">No estaba conforme con mi vida:</span> manejando un Uber, la paga era poca para las horas que le metía, mi vida social en segundo plano — hasta nula, había vuelto a vivir en la casa de mis padres y no conseguía otro trabajo. Tenía mucho tiempo libre para pensar, entre viaje y viaje.</p>
+        <p>Y me pregunté qué me gustaba hacer. Qué podía hacer durante horas sin que se sintiera como una obligación, sino porque me gustaba. Llegué a la conclusión de que era estar en la computadora. Algo que había dejado hace mucho. Y descubrí que se podía hacer dinero de esa manera.</p>
+        <p>Empecé con un curso de productos digitales: "Hacelos con inteligencia artificial, ella hace todo por vos, es una herramienta fantástica". Me di cuenta de que la tecnología había avanzado y yo ya no era tan rápido con el teclado. Tenía mucho que aprender.</p>
+        <p>Empecé con unos PDF para vender. Me salió una app sin backend, de casualidad. Y empecé a percibir que podía hacer mucho más sin tener tanto conocimiento. El conocimiento ya venía con la IA — o eso creía.</p>
+        <p>Entonces me embarqué en algo más ambicioso. Estaban de moda los chatbots, pero no había nada personalizado. Intenté con eso. Y cuando le faltaba poco para que la probaran, me di un golpazo. Fue muy duro: descubrí que mi proyecto estaba roto por todos lados. Dos días de frustración sin querer tocar un teclado. Impotencia y enojo, culpando primero a la IA. "¿Por qué no me avisó? ¿Por qué no se dio cuenta, si tenía la documentación?" Pero no me di por vencido.</p>
+        <p><span class="hl">La IA es muy buena como herramienta, pero como toda herramienta, hay que saber utilizarla.</span></p>
+        <p>Le empecé a dar reglas, porque las sigue. Empecé a ser más estructurado, para equivocarme menos. Pero la falencia más grande, la más difícil de cubrir, era mi falta de memoria.</p>
+        <p>Y ahí lo vi claro: si mejoraba la memoria de la inteligencia artificial, ella iba a poder cubrir mi falta de memoria.</p>
+        <p>Así que decidí cubrir ese aspecto. <span class="hl">Darle memoria.</span></p>
+        <p>Así nació lo que hoy construí: CausaDB, construido con CausaDB. Es el producto al que tenés acceso ahora, para conseguir la ventaja que yo no tuve en ese primer proyecto ambicioso en el que me había embarcado para comenzar este viaje.</p>
+        <p>Arranqué por el dinero, no te lo voy a negar. Pero hoy lo que me mueve es otra cosa: que tu proyecto sea más sano que el mío. Que no descubras el tuyo roto por todos lados a último momento, ni pases dos días sin querer tocar un teclado. Si te ahorro un dolor de cabeza, esto ya valió la pena.</p>
+        <p><span class="hl">¿No me crees? Vení, te muestro.</span></p>
+        </div>
+        </div>
+    </section>
+
     <!-- SECTION: INVITACION -->
     <section id="invitacion" class="section">
         <div class="container">
@@ -719,7 +787,7 @@
             <h2 class="section__title">Probalo gratis. Hoy no te cuesta nada.</h2>
             <p class="section__lead">Comenzá un proyecto con tu herramienta favorita, conectalo y trabajá con normalidad. No te va a costar nada. Pero los beneficios que CausaDB te ofrece —a vos y a tu agente— con el paso del tiempo, no tienen precio.</p>
             <p class="hero__muted"><span class="hl">Dale un BIT. Preguntale qué pasó. Mirá lo que recupera.</span></p>
-            <a href="#" class="hero__cta hero__cta--primary">Comenzar con CausaDB</a>
+            <a href="https://github.com/thebuilderpeligroso-netizen/causadb" target="_blank" rel="noopener noreferrer" class="hero__cta hero__cta--primary">Comenzar con CausaDB</a>
             <a href="#proof" class="hero__cta hero__cta--secondary">Ver la prueba</a>
         </div>
     </section>

@@ -60,6 +60,11 @@ class BlobStore:
                 os.remove(temp_path)
         return content_hash
 
+    def put_redacted(self, data: dict, config=None) -> str:
+        """Choke point: redacta *data* antes de persistir (delegado)."""
+        from causadb._redactor import put_redacted as _put_redacted
+        return _put_redacted(self, data, config)
+
     def get(self, content_hash: str) -> dict:
         """Retrieve the blob identified by *content_hash* from disk.
 

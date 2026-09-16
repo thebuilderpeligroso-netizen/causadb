@@ -8,6 +8,7 @@ Artículo I: flush() uses LedgerWriter.append(). Never opens ledger.log directly
 Artículo VII: mínimo funcional. Bash-only hot path (no Python in trap/PROMPT).
 """
 
+import base64
 import json
 import os
 import re
@@ -42,10 +43,10 @@ __causadb_hook_log() {{
     [ -z "$__causadb_prev_prompt" ] || eval "$__causadb_prev_prompt"
     [ -n "$__causadb_saved_cmd" ] || return
     local ec=$?
-    local cmd_escaped="$(printf '%s' "$__causadb_saved_cmd" | sed 's/"/\\\\"/g')"
-    printf '{{"event_type":"COMMAND_RUN","source":"shell:bash","source_type":"agent","ctx_id":"%s","payload":{{"command":"%s","exit_code":%d}}}}\\n' \
+    local cmd_b64="$(printf '%s' "$__causadb_saved_cmd" | base64 -w0)"
+    printf '{{"event_type":"COMMAND_RUN","source":"shell:bash","source_type":"agent","ctx_id":"%s","payload":{{"command_b64":"%s","exit_code":%d}}}}\\n' \
         "$__causadb_ctx_id" \
-        "$cmd_escaped" \
+        "$cmd_b64" \
         "$ec" >> "$__causadb_queue"
 }}
 trap '[[ $BASH_COMMAND != __causadb_hook_log* ]] && __causadb_saved_cmd=$BASH_COMMAND' DEBUG
@@ -175,16 +176,30 @@ def flush(ledger_path: str) -> dict:
                     continue
                 try:
                     data = json.loads(line)
+                    raw_payload = data.get("payload", {})
+                    # Fase 1: el hook nuevo manda command_b64 (robusto ante
+                    # comillas/backslash/newlines). Tolerar formato viejo
+                    # (command en claro) para no perder la cola pendiente.
+                    raw_cmd = raw_payload.get("command", "")
+                    b64 = raw_payload.get("command_b64")
+                    if b64:
+                        try:
+                            raw_cmd = base64.b64decode(b64).decode("utf-8", errors="replace")
+                        except Exception:
+                            pass
                     event = CanonicalEvent(
                         event_type=EventType.COMMAND_RUN,
                         ctx_id=data.get("ctx_id", "shell"),
                         source=data.get("source", "shell:bash"),
                         source_type=data.get("source_type", "agent"),
                         payload={
-                            "command": data.get("payload", {}).get("command", ""),
-                            "exit_code": data.get("payload", {}).get("exit_code", -1),
+                            "command": raw_cmd,
+                            "exit_code": raw_payload.get("exit_code", -1),
                         },
                     )
+                    # La redacción de secretos dentro de `command` la aplica
+                    # LedgerWriter.append (redact recursivo + regex alta
+                    # precisión) en el camino de persistencia.
                     # Validate schema before writing (Artículo I)
                     vr = validate_event_schema(event)
                     if not vr.is_valid:

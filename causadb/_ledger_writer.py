@@ -259,7 +259,7 @@ class LedgerWriter:
                         if len(payload_bytes) > self.config.blob_store_threshold:
                             from causadb._blob_store import BlobStore
                             store = BlobStore(self.config.blob_store_path)
-                            content_hash = store.put(payload_dict)
+                            content_hash = store.put_redacted(payload_dict, self.config)
                             payload_dict = {"$blob": content_hash}
                     
                     event_dict = event.to_dict()

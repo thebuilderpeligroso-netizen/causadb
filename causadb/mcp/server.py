@@ -795,6 +795,139 @@ HTTP_SAFE_TOOLS = {
 HTTP_SAFE_RESOURCES = {"causadb://config", "causadb://canon"}
 
 
+# ---------------------------------------------------------------------------
+# Fase 2 "Puertas con traba" — auth per-request para MCP-HTTP.
+#
+# Mecanismo estándar: Starlette `BaseHTTPMiddleware` (el framework HTTP que
+# usa FastMCP/streamable-http) + comparación timing-safe vía el helper
+# compartido `causadb._auth.require_api_key` (hmac.compare_digest, sin logs).
+# stdio local SIN cambios: `create_server()` no toca esto.
+# ---------------------------------------------------------------------------
+
+MCP_API_KEY_ENV = "CAUSADB_MCP_API_KEY"
+
+
+def get_mcp_api_key() -> Optional[str]:
+    """Lee la key esperada de env ``CAUSADB_MCP_API_KEY`` (o None)."""
+    val = os.environ.get(MCP_API_KEY_ENV)
+    return val.strip() if val and val.strip() else None
+
+
+def require_mcp_api_key_or_fail() -> str:
+    """Devuelve la key MCP o falla rápido (SystemExit 1) con mensaje claro."""
+    key = get_mcp_api_key()
+    if not key:
+        print(
+            "CausaDB: MCP-HTTP requiere API key. Seteá env "
+            f"{MCP_API_KEY_ENV} con una key larga al azar y mandala en "
+            "cada request como header `X-API-Key` o "
+            "`Authorization: Bearer <key>`.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return key
+
+
+def mcp_unauthorized_body() -> dict:
+    """Cuerpo 401: claro sobre cómo conseguir la key (sin filtrarla)."""
+    return {
+        "error": "unauthorized",
+        "message": (
+            "Missing or invalid API key. Set env "
+            f"{MCP_API_KEY_ENV} on the server and send it on every "
+            "request as `X-API-Key` or `Authorization: Bearer <key>`."
+        ),
+    }
+
+
+def _extract_provided_key(headers) -> Optional[str]:
+    """Extrae la key provista: X-API-Key o Authorization Bearer."""
+    get = headers.get if hasattr(headers, "get") else (lambda k, d=None: headers.get(k, d))
+    direct = get("X-API-Key") or get("x-api-key")
+    if direct and str(direct).strip():
+        return str(direct).strip()
+    auth = get("Authorization") or get("authorization")
+    if auth and isinstance(auth, str):
+        parts = auth.strip().split(None, 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer" and parts[1].strip():
+            return parts[1].strip()
+    return None
+
+
+def is_mcp_request_authorized(headers, expected: Optional[str]) -> bool:
+    """True si los headers traen la key correcta (timing-safe, sin logs)."""
+    from causadb._auth import require_api_key
+    if not expected:
+        return False
+    return require_api_key(_extract_provided_key(headers), expected)
+
+
+class ApiKeyMiddleware:
+    """Middleware Starlette estándar: exige API key en CADA request (401).
+
+    Uso estándar del framework (no middleware HTTP a medida fuera del
+    framework): se instala con ``app.add_middleware(ApiKeyMiddleware,
+    api_key=...)`` sobre la app que devuelve ``streamable_http_app()``.
+    Implementado como middleware ASGI puro compatible con Starlette
+    (misma firma que ``BaseHTTPMiddleware`` sin subclass forzada para
+    no acoplar import en stdio).
+    """
+
+    def __init__(self, app, api_key: str):
+        self.app = app
+        self.api_key = api_key
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        raw = scope.get("headers", []) or []
+        headers = {}
+        for k, v in raw:
+            try:
+                headers[k.decode("latin-1").lower()] = v.decode("latin-1")
+            except Exception:
+                continue
+        # Normalizar a las dos formas que entiende el extractor.
+        norm = {}
+        if "x-api-key" in headers:
+            norm["X-API-Key"] = headers["x-api-key"]
+        if "authorization" in headers:
+            norm["Authorization"] = headers["authorization"]
+        if not is_mcp_request_authorized(norm, self.api_key):
+            from starlette.responses import JSONResponse
+            resp = JSONResponse(mcp_unauthorized_body(), status_code=401)
+            await resp(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+def apply_mcp_http_auth(server, api_key: str):
+    """Instala ApiKeyMiddleware en la Starlette app (mecanismo estándar).
+
+    Parchea ``server.streamable_http_app`` para que cada app creada lleve
+    ``add_middleware(ApiKeyMiddleware, api_key=...)``. stdio no se toca.
+    """
+    orig = server.streamable_http_app
+
+    def _patched():
+        app = orig()
+        try:
+            app.add_middleware(ApiKeyMiddleware, api_key=api_key)
+        except Exception:
+            # Fallback: envolver ASGI a mano si add_middleware no existe.
+            inner = app
+
+            async def _wrapper(scope, receive, send):
+                await ApiKeyMiddleware(inner, api_key)(scope, receive, send)
+
+            return _wrapper
+        return app
+
+    server.streamable_http_app = _patched
+    return server
+
+
 def _is_loopback(host: str) -> bool:
     """Return True if `host` binds to loopback only.
 
@@ -994,12 +1127,15 @@ def main() -> None:
         return
 
     # --- Network mode (streamable-http) — security subset -----------------
-    api_key = os.environ.get("CAUSADB_MCP_API_KEY")
+    # Fase 2: la key es OBLIGATORIA en red (no solo non-loopback) y se exige
+    # en CADA request vía ApiKeyMiddleware (401 sin/mal). stdio sigue igual.
+    api_key = require_mcp_api_key_or_fail()
     _check_bind_safety(host, api_key)
     ledger_path = _require_explicit_ledger(ledger)
     config = CausaDBConfig(ledger_path=ledger_path)
     mcp = create_server(config=config)
     anyio.run(_apply_http_security, mcp, config)
+    apply_mcp_http_auth(mcp, api_key)
     # host/port live on the FastMCP constructor settings; set them post-hoc
     # (create_server() is intentionally untouched).
     mcp.settings.host = host

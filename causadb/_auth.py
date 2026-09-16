@@ -16,6 +16,86 @@ contra el dict de dev-mode (``--auth key=role``) y después contra el
 
 from typing import Optional
 
+import hmac
+import os
+import stat
+
+
+def require_api_key(provided: Optional[str], expected: Optional[str]) -> bool:
+    """Comparación timing-safe de API keys (Fase 2 "Puertas con traba").
+
+    Usa ``hmac.compare_digest`` (mecanismo estándar de la stdlib) y nunca
+    loguea ninguno de los dos valores (ni siquiera prefijos).
+
+    Returns:
+        True solo si ambos son str no vacíos e idénticos.
+    """
+    if not isinstance(provided, str) or not isinstance(expected, str):
+        return False
+    if not provided or not expected:
+        return False
+    return hmac.compare_digest(provided, expected)
+
+
+REST_API_KEY_ENV = "CAUSADB_API_KEY"
+REST_API_KEY_FILE_ENV = "CAUSADB_API_KEY_FILE"
+
+
+def load_rest_api_key() -> Optional[str]:
+    """Carga la key de REST desde env ``CAUSADB_API_KEY`` o archivo 0600.
+
+    Orden:
+      1. ``CAUSADB_API_KEY`` (valor directo).
+      2. ``CAUSADB_API_KEY_FILE`` (path a archivo con la key; debe ser 0600).
+
+    Returns:
+        La key (str) o None si no hay nada configurado.
+    """
+    direct = os.environ.get(REST_API_KEY_ENV)
+    if direct and direct.strip():
+        return direct.strip()
+    path = os.environ.get(REST_API_KEY_FILE_ENV)
+    if path and path.strip():
+        path = path.strip()
+        try:
+            st = os.stat(path)
+        except OSError:
+            return None
+        # Exigir 0600 (ni grupo ni otros con ningún permiso).
+        if st.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                val = f.read().strip().splitlines()[0] if f else ""
+        except OSError:
+            return None
+        return val.strip() or None
+    return None
+
+
+def rest_auth_error_message() -> str:
+    """Mensaje fail-fast cuando `serve` arranca sin auth (Fase 2)."""
+    return (
+        "CausaDB REST: auth no configurada — `serve` no arranca sin API key. "
+        f"Configurá env {REST_API_KEY_ENV} con una key larga al azar, "
+        f"o {REST_API_KEY_FILE_ENV}=/ruta/al/archivo con permisos 0600 "
+        "(el archivo debe ser legible solo por el dueño). "
+        "Nada de usuarios/clave de fábrica."
+    )
+
+
+def resolve_rest_auth_or_fail() -> str:
+    """Devuelve la key REST o levanta SystemExit(1) con mensaje explicativo.
+
+    Usado por `causadb serve start` (fail-fast, Artículo IX).
+    """
+    import sys
+    key = load_rest_api_key()
+    if not key:
+        print(rest_auth_error_message(), file=sys.stderr)
+        raise SystemExit(1)
+    return key
+
 
 class AuthManager:
     """Authentication and authorization manager.
@@ -117,10 +197,10 @@ class AuthManager:
             return "admin"
         if not api_key:
             return None
-        # 1. Dev-mode keys (fast path)
-        role = self._api_keys.get(api_key)
-        if role is not None:
-            return role
+        # 1. Dev-mode keys (fast path) — timing-safe via require_api_key.
+        for stored_key, stored_role in self._api_keys.items():
+            if require_api_key(api_key, stored_key):
+                return stored_role
         # 2. UserStore fallback
         if self._user_store is not None:
             user = self._user_store.get_user_by_api_key(api_key)

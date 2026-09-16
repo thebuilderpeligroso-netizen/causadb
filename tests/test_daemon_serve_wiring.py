@@ -39,13 +39,15 @@ from causadb.cli._cmd_harvest import cmd_harvest, _start as _harvest_start
 # 1. serve start: wiring completo ANTES de serve() (que bloquea)
 # ---------------------------------------------------------------------------
 
-def test_serve_start_wires_daemon_and_handlers_before_serve(tmp_path):
+def test_serve_start_wires_daemon_and_handlers_before_serve(tmp_path, monkeypatch):
+    monkeypatch.setenv("CAUSADB_API_KEY", "test-key-12345678")
+    monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
     ledger = str(tmp_path / "ledger.log")
     args = SimpleNamespace(ledger=ledger, host=None, port=None)
 
     call_log = []
 
-    def fake_serve(ledger_path, host="127.0.0.1", port=7457, on_server_created=None):
+    def fake_serve(ledger_path, host="127.0.0.1", port=7457, on_server_created=None, auth_manager=None, **kwargs):
         call_log.append(("serve", ledger_path, host, port))
         assert on_server_created is not None, "serve debe recibir el callback"
 
@@ -73,14 +75,16 @@ def test_serve_start_wires_daemon_and_handlers_before_serve(tmp_path):
     set_s.assert_not_called()  # se llama recién cuando el server existe
 
 
-def test_serve_on_server_created_starts_daemon_and_registers_server(tmp_path):
+def test_serve_on_server_created_starts_daemon_and_registers_server(tmp_path, monkeypatch):
     """El callback que llega a serve() registra el server y arranca el daemon
     (tick en background) — todo antes de que serve_forever bloquee."""
+    monkeypatch.setenv("CAUSADB_API_KEY", "test-key-12345678")
+    monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
     ledger = str(tmp_path / "ledger.log")
     args = SimpleNamespace(ledger=ledger, host="127.0.0.1", port=7457)
     captured = {}
 
-    def fake_serve(ledger_path, host="127.0.0.1", port=7457, on_server_created=None):
+    def fake_serve(ledger_path, host="127.0.0.1", port=7457, on_server_created=None, auth_manager=None, **kwargs):
         captured["callback"] = on_server_created
 
     daemon_instance = MagicMock(spec=HarvesterDaemon)

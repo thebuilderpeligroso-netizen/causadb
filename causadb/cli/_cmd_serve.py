@@ -76,7 +76,7 @@ def cmd_serve(args) -> Tuple[int, str]:
         return (1, json.dumps({"error": f"Unknown action: {action}"}))
 
 
-def _serve_blocking(ledger_path: str, host, port) -> None:
+def _serve_blocking(ledger_path: str, host, port, auth_manager=None) -> None:
     """Bloquea en serve_forever() con el wiring del daemon ya hecho.
 
     Extraido para reusar entre el path foreground y el path daemon.
@@ -91,7 +91,24 @@ def _serve_blocking(ledger_path: str, host, port) -> None:
         daemon.start()
 
     serve(ledger_path, host=host or "127.0.0.1", port=port or 7457,
+          auth_manager=auth_manager,
           on_server_created=_on_server_created)
+
+
+def _build_rest_auth_or_fail():
+    """Construye AuthManager desde env/archivo o retorna error fail-fast.
+
+    Fase 2: sin auth configurada `serve` NO arranca. Nada de clave de
+    fábrica. Key vive en env ``CAUSADB_API_KEY`` o archivo 0600
+    (``CAUSADB_API_KEY_FILE``). Returns (auth_manager, error_json).
+    """
+    from causadb._auth import AuthManager, load_rest_api_key, rest_auth_error_message
+    key = load_rest_api_key()
+    if not key:
+        return None, json.dumps({"error": rest_auth_error_message()}, sort_keys=True)
+    am = AuthManager()
+    am.enable({key: "admin"})
+    return am, None
 
 
 def _serve_start(args) -> Tuple[int, str]:
@@ -99,6 +116,10 @@ def _serve_start(args) -> Tuple[int, str]:
         ledger_path = resolve_ledger(args.ledger)
     except NoWorkspaceError as e:
         return (1, json.dumps({"error": str(e)}))
+    # Fase 2 "Puertas con traba": fail-fast sin auth (antes de puertos/forks).
+    auth_manager, auth_err = _build_rest_auth_or_fail()
+    if auth_err is not None:
+        return (1, auth_err)
     host = getattr(args, "host", None) or "127.0.0.1"
     # Fix: use getattr with default 7457 directly, not `or 7457` (0 is falsy)
     port = getattr(args, "port", 7457)
@@ -124,7 +145,7 @@ def _serve_start(args) -> Tuple[int, str]:
         platform.daemonize("serve")
 
         try:
-            _serve_blocking(ledger_path, host, actual_port)
+            _serve_blocking(ledger_path, host, actual_port, auth_manager=auth_manager)
         except OSError as e:
             msg = str(e).lower()
             if "in use" in msg or "already in use" in msg:
@@ -142,7 +163,7 @@ def _serve_start(args) -> Tuple[int, str]:
         # Path FOREGROUND (desarrollo). SIN daemonize.
         install_signal_handlers(ledger_path)
         try:
-            _serve_blocking(ledger_path, host, actual_port)
+            _serve_blocking(ledger_path, host, actual_port, auth_manager=auth_manager)
         finally:
             from causadb._daemon_service import _current_harvester_daemon
             if _current_harvester_daemon is not None:

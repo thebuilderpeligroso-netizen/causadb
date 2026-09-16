@@ -67,15 +67,16 @@ def test_webhook_tradingview_event_appears_in_query(ledger_and_server):
 
 
 def test_webhook_tradingview_empty_body(ledger_and_server):
-    """POST /api/webhook/tradingview with empty body → still 200 (fall-closed)."""
-    _, port, _ = ledger_and_server
+    """Fase 2: body vacío → 400 y NADA anexado (antes: 200 fall-closed buggy)."""
+    ledger, port, _ = ledger_and_server
+    before = len(open(ledger).readlines())
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     conn.request("POST", "/api/webhook/tradingview", "", {"Content-Type": "application/json"})
     resp = conn.getresponse()
     data = json.loads(resp.read())
     conn.close()
-    assert resp.status == 200
-    assert "event_id" in data
+    assert resp.status == 400
+    assert len(open(ledger).readlines()) == before
 
 
 def test_webhook_tradingview_no_auth_required(ledger_and_server):

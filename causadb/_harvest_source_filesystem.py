@@ -60,6 +60,26 @@ _DEFAULT_EXCLUDED_DIRS = {
 }
 
 
+# Fase 1 "No más secretos en claro" — DENY_BLOBS por basename lower.
+# Solo metadata, sin contenido (forward-only, sin purga histórica).
+DENY_EXACT = {".env", ".env.local", "secrets.yaml", "credentials.json"}
+DENY_PREFIXES = ("id_rsa",)
+DENY_SUFFIXES = (".pem", ".key")
+
+
+def _is_deny_blob(relpath: str) -> bool:
+    base = os.path.basename(relpath).lower()
+    if base in DENY_EXACT:
+        return True
+    for prefix in DENY_PREFIXES:
+        if base.startswith(prefix):
+            return True
+    for suffix in DENY_SUFFIXES:
+        if base.endswith(suffix):
+            return True
+    return False
+
+
 class FilesystemSource(HarvestSource):
     """Fuente de harvest para cambios de archivos en un directorio de proyecto.
 
@@ -186,7 +206,11 @@ class FilesystemSource(HarvestSource):
             ]
 
             for fname in filenames:
-                if fname.startswith(".") or fname.endswith(".pyc"):
+                # Fase 1 DENY_BLOBS: .env/.env.local emiten metadata-only
+                # (no se skipean como dotfiles); el resto de dotfiles sí.
+                if fname.endswith(".pyc"):
+                    continue
+                if fname.startswith(".") and not _is_deny_blob(fname):
                     continue
 
                 fpath = os.path.join(dirpath, fname)
@@ -252,6 +276,12 @@ class FilesystemSource(HarvestSource):
             ``content_hash``). ``(None, None)`` si solo se registra
             metadata.
         """
+        if _is_deny_blob(relpath):
+            logging.debug(
+                "FilesystemSource: deny-blob %s; storing metadata only",
+                relpath,
+            )
+            return None, None
         if size > MAX_BLOB_SIZE:
             logging.warning(
                 "FilesystemSource: file %s (%d bytes) exceeds MAX_BLOB_SIZE "
@@ -285,14 +315,14 @@ class FilesystemSource(HarvestSource):
             return None, None
 
         content_hash = hashlib.sha256(file_content).hexdigest()
-        blob_hash = self._blob_store.put({
+        blob_hash = self._blob_store.put_redacted({
             "path": relpath,
             "content": file_content.decode("utf-8", errors="replace"),
             "size": size,
             "mtime": mtime,
             "action": action,
             "content_hash": content_hash,
-        })
+        }, self._config)
         return content_hash, blob_hash
 
     def advance_cursor(

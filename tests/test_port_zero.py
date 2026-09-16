@@ -53,8 +53,13 @@ class TestPortZeroSupport:
         assert port_file is None
 
     @patch('causadb.cli._cmd_serve.serve')
-    def test_serve_start_accepts_port_zero(self, mock_serve, tmp_path):
-        """cmd_serve start accepts --port=0 and binds to ephemeral port."""
+    def test_serve_start_accepts_port_zero(self, mock_serve, tmp_path, monkeypatch):
+        """cmd_serve start accepts --port=0 and binds to ephemeral port.
+
+        Fase 2: serve exige auth — se provee key para probar el resto del flujo.
+        """
+        monkeypatch.setenv("CAUSADB_API_KEY", "test-key-12345678")
+        monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
         ws = tmp_path / "ws"
         result = causadb_init(str(ws))
         ledger = result["ledger_path"]
@@ -77,8 +82,13 @@ class TestPortZeroSupport:
         assert data.get("status") == "stopped"
         mock_serve.assert_called_once()
 
-    def test_serve_start_writes_port_file(self, tmp_path):
-        """When port=0, daemon writes actual port to /tmp/causadb-test-<uuid>/port.txt"""
+    def test_serve_start_writes_port_file(self, tmp_path, monkeypatch):
+        """When port=0, daemon writes actual port to /tmp/causadb-test-<uuid>/port.txt
+
+        Fase 2: serve exige auth — se provee key para probar el resto del flujo.
+        """
+        monkeypatch.setenv("CAUSADB_API_KEY", "test-key-12345678")
+        monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
         ws = tmp_path / "ws"
         result = causadb_init(str(ws))
         ledger = result["ledger_path"]
@@ -105,8 +115,13 @@ class TestPortZeroSupport:
             port = int(f.read().strip())
         assert 1024 <= port <= 65535, f"Port {port} should be in valid range"
 
-    def test_port_zero_binds_ephemeral(self, tmp_path):
-        """Port 0 actually binds to an ephemeral port (not literal 0)."""
+    def test_port_zero_binds_ephemeral(self, tmp_path, monkeypatch):
+        """Port 0 actually binds to an ephemeral port (not literal 0).
+
+        Fase 2: serve exige auth — se provee key para probar el resto del flujo.
+        """
+        monkeypatch.setenv("CAUSADB_API_KEY", "test-key-12345678")
+        monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
         ws = tmp_path / "ws"
         result = causadb_init(str(ws))
         ledger = result["ledger_path"]
@@ -126,6 +141,35 @@ class TestPortZeroSupport:
         assert exit_code == 0
         data = json.loads(output)
         assert data.get("status") == "stopped"
+
+    def test_serve_start_without_key_fails_auth(self, tmp_path, monkeypatch):
+        """Fase 2 (BIT-CHR.142): serve SIN key falla fail-fast.
+
+        Sin CAUSADB_API_KEY ni CAUSADB_API_KEY_FILE, `serve` no arranca:
+        exit != 0, mensaje de auth, y serve() NUNCA se invoca.
+        """
+        monkeypatch.delenv("CAUSADB_API_KEY", raising=False)
+        monkeypatch.delenv("CAUSADB_API_KEY_FILE", raising=False)
+        ws = tmp_path / "ws"
+        result = causadb_init(str(ws))
+        ledger = result["ledger_path"]
+
+        args = type('Args', (), {
+            'action': 'start',
+            'ledger': ledger,
+            'host': '127.0.0.1',
+            'port': 0,
+            'daemon': False
+        })()
+
+        with patch('causadb.cli._cmd_serve.serve') as mock_serve:
+            exit_code, output = cmd_serve(args)
+
+        assert exit_code != 0, f"serve sin key debe fallar; obtuvo: {output}"
+        assert "auth" in output.lower() or "api key" in output.lower(), (
+            f"el error debe mencionar auth/API key; obtuvo {output!r}"
+        )
+        mock_serve.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -46,3 +46,7 @@ MagicMock/
 =2.3
 _archive/
 *.lock
+# Deuda técnica: privada hasta sanear rojos
+docs/TECHNICAL_DEBT.md
+# Respaldo local del demo anterior
+docs/landing/demo-2026-09-08.mp4

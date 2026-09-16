@@ -13,6 +13,61 @@ from causadb._watchdog import HealthMetrics
 from causadb._query_engine import query_events
 import csv
 import io
+import time
+
+
+WEBHOOK_SECRET_ENV = "CAUSADB_WEBHOOK_SECRET"
+WEBHOOK_IPS_ENV = "CAUSADB_WEBHOOK_ALLOWED_IPS"
+# Rate-limit básico FASE 1: 60 req/min por IP (memoria, sin deps).
+WEBHOOK_RATE_LIMIT = 60
+WEBHOOK_RATE_WINDOW_S = 60.0
+_webhook_hits: dict[str, list[float]] = {}
+
+
+def get_webhook_secret() -> str | None:
+    """Secreto del webhook (env ``CAUSADB_WEBHOOK_SECRET``) o None."""
+    val = os.environ.get(WEBHOOK_SECRET_ENV)
+    return val.strip() if val and val.strip() else None
+
+
+def get_webhook_allowed_ips() -> set[str] | None:
+    """Lista opcional de IPs permitidas (env comma-separated) o None (=todas)."""
+    raw = os.environ.get(WEBHOOK_IPS_ENV)
+    if not raw or not raw.strip():
+        return None
+    return {p.strip() for p in raw.split(",") if p.strip()}
+
+
+def _webhook_rate_limited(ip: str) -> bool:
+    """Sliding-window por IP. True si excede (y NO debe persistir)."""
+    now = time.monotonic()
+    hits = _webhook_hits.get(ip, [])
+    hits = [t for t in hits if now - t < WEBHOOK_RATE_WINDOW_S]
+    if len(hits) >= WEBHOOK_RATE_LIMIT:
+        _webhook_hits[ip] = hits
+        return True
+    hits.append(now)
+    _webhook_hits[ip] = hits
+    return False
+
+
+def validate_tradingview_payload(body) -> str | None:
+    """Validación estricta FASE 1. None=OK, str=error (400, NO persistir)."""
+    if not isinstance(body, dict):
+        return "empty or invalid JSON body"
+    symbol = body.get("symbol")
+    side = body.get("side")
+    qty = body.get("qty")
+    price = body.get("price")
+    if not isinstance(symbol, str) or not symbol.strip():
+        return "missing/invalid 'symbol'"
+    if side not in ("buy", "sell"):
+        return "missing/invalid 'side' (buy|sell)"
+    if not isinstance(qty, (int, float)) or isinstance(qty, bool) or qty <= 0:
+        return "missing/invalid 'qty' (>0)"
+    if not isinstance(price, (int, float)) or isinstance(price, bool) or price <= 0:
+        return "missing/invalid 'price' (>0)"
+    return None
 
 
 def _causadb_executable() -> str:
@@ -210,10 +265,11 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         try:
-            # TradingView webhook is a public endpoint — no auth required.
-            if self.path == "/api/webhook/tradingview":
-                body = self._read_body()
-                self._handle_webhook_tradingview(body)
+            # TradingView webhook FASE 1: secreto en URL + validación estricta.
+            # Sin HMAC (el remitente no sabe firmar). Rate-limit + IPs opcional.
+            _wpath = urlparse(self.path).path
+            if _wpath == "/api/webhook/tradingview" or _wpath.startswith("/api/webhook/tradingview/"):
+                self._handle_webhook_tradingview_routed(_wpath)
                 return
 
             # /api/assistant is a local dashboard endpoint — no auth required.
@@ -562,21 +618,59 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
         register_type(name, spec)
         self._json_response({"status": "ok", "registered": name})
     
-    def _handle_webhook_tradingview(self, body):
-        """POST /api/webhook/tradingview — public webhook receiver.
+    def _handle_webhook_tradingview_routed(self, wpath: str):
+        """Routing FASE 1: secreto en URL (404 si no matchea) + filtros previos.
 
-        TradingView sends plain JSON like ``{"symbol": "BTCUSD", "side": "buy"}``.
-        This endpoint maps it to a ``TRADE_EXECUTED`` CanonicalEvent and
-        writes it to the ledger via LedgerWriter.
-
-        Artículo IX (Fall-Closed): if body is empty or malformed, we still
-        write a TRADE_EXECUTED with empty payload as a signal of a malformed
-        webhook.
+        - Si ``CAUSADB_WEBHOOK_SECRET`` está seteado: solo
+          ``/api/webhook/tradingview/<secreto>`` con match exacto
+          (timing-safe) pasa; legacy sin segmento y secreto malo → 404.
+        - Si NO hay secreto: legacy ``/api/webhook/tradingview`` sigue
+          funcionando (back-compat dev) pero con validación estricta.
+        - Rate-limit 60/min por IP → 429. IPs permitidas opcionales → 403.
+        - Body vacío/inválido → 400 y NO se persiste nada.
         """
+        from causadb._auth import require_api_key
+        secret = get_webhook_secret()
+        prefix = "/api/webhook/tradingview/"
+        if secret:
+            if not wpath.startswith(prefix):
+                self._json_response({"error": "not found"}, 404)
+                return
+            provided = wpath[len(prefix):].split("/", 1)[0].split("?", 1)[0]
+            if not require_api_key(provided, secret):
+                self._json_response({"error": "not found"}, 404)
+                return
+        else:
+            if wpath != "/api/webhook/tradingview":
+                self._json_response({"error": "not found"}, 404)
+                return
+        # IP allowlist opcional (si es trivial: env comma-separated).
+        allowed = get_webhook_allowed_ips()
+        client_ip = (self.client_address[0] if getattr(self, "client_address", None) else "unknown")
+        if allowed is not None and client_ip not in allowed:
+            self._json_response({"error": "forbidden", "message": "IP not allowed"}, 403)
+            return
+        if _webhook_rate_limited(client_ip):
+            self._json_response({"error": "rate_limited", "message": "too many requests"}, 429)
+            return
+        body = self._read_body()
+        self._handle_webhook_tradingview(body)
+
+    def _handle_webhook_tradingview(self, body):
+        """POST webhook TradingView — validación estricta FASE 1 (sin HMAC).
+
+        TradingView envía JSON plano ``{"symbol","side","qty","price"}``.
+        Se mapea a ``TRADE_EXECUTED`` solo si el body es válido; si es
+        vacío/inválido → 400 y NO se persiste nada (Artículo IX).
+        """
+        err = validate_tradingview_payload(body)
+        if err is not None:
+            self._json_response({"error": "invalid webhook body", "message": err}, 400)
+            return
         from causadb._event_schema import CanonicalEvent
         from causadb._event_types import EventType
 
-        payload = body or {}
+        payload = body
 
         # Register TRADE_EXECUTED if not already registered (idempotent).
         # The adapter module does this at import time, but we ensure it here
