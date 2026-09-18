@@ -13,7 +13,7 @@ Usage::
 import json
 from typing import Tuple
 
-from causadb._score import compute_score
+from causadb._score import compute_score, _collapse_warnings
 
 
 def cmd_score(args) -> Tuple[int, str]:
@@ -87,7 +87,13 @@ def _render_markdown(result: dict, by_session: bool = False) -> str:
     if warnings:
         lines.append("")
         lines.append("### Warnings")
-        for wn in warnings:
+        n_missing, other = _collapse_warnings(warnings)
+        if n_missing:
+            lines.append(
+                f"- {n_missing} eventos sin snapshot "
+                "(no_snapshots_for_*) — ver JSON para event_ids"
+            )
+        for wn in other:
             lines.append(f"- {wn}")
     if by_session:
         per = result.get("per_session", {})
@@ -129,7 +135,13 @@ def _render_terminal(result: dict, by_session: bool = False) -> str:
     warnings = result.get("warnings", [])
     if warnings:
         lines.append("Warnings:")
-        for wn in warnings:
+        n_missing, other = _collapse_warnings(warnings)
+        if n_missing:
+            lines.append(
+                f"  - {n_missing} eventos sin snapshot "
+                "(no_snapshots_for_*) — ver JSON para event_ids"
+            )
+        for wn in other:
             lines.append(f"  - {wn}")
     if by_session:
         per = result.get("per_session", {})

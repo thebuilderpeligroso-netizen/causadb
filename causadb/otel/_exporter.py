@@ -29,6 +29,8 @@ Returns:
     }
 """
 
+import os
+import urllib.parse
 from typing import Optional, Dict
 
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -38,6 +40,41 @@ from causadb._ledger_reader import LedgerReader
 from causadb._event_schema import CanonicalEvent
 from causadb._event_types import EventType
 from causadb.otel._mapper import event_to_span, EVENT_TYPE_TO_OTEL_SPAN
+
+# Allowlist de endpoints OTLP (SSRF hardening). Por defecto SOLO loopback.
+# Se extiende via env `CAUSADB_OTEL_ALLOWED_ENDPOINTS` (hosts separados por coma).
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _allowed_endpoints() -> set:
+    """Hosts permitidos: loopback default + env CAUSADB_OTEL_ALLOWED_ENDPOINTS."""
+    allowed = set(_LOOPBACK_HOSTS)
+    env = os.environ.get("CAUSADB_OTEL_ALLOWED_ENDPOINTS", "")
+    for item in env.split(","):
+        item = item.strip()
+        if item:
+            allowed.add(item)
+    return allowed
+
+
+def _validate_endpoint(endpoint: str) -> None:
+    """Valida que *endpoint* sea http(s) y su host esté en la allowlist.
+
+    Raise ``ValueError`` si el scheme no es http/https o el host no está
+    permitido (loopback por defecto, extendible via
+    ``CAUSADB_OTEL_ALLOWED_ENDPOINTS``).
+    """
+    parsed = urllib.parse.urlparse(endpoint)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(
+            f"OTLP endpoint scheme must be http/https, got: {parsed.scheme!r}"
+        )
+    host = parsed.hostname or ""
+    if host not in _allowed_endpoints():
+        raise ValueError(
+            f"OTLP endpoint host {host!r} not in allowlist. Default allows "
+            f"loopback only. Extend via CAUSADB_OTEL_ALLOWED_ENDPOINTS."
+        )
 
 
 def export_ledger(
@@ -56,6 +93,9 @@ def export_ledger(
         Dict con keys `exported_spans`, `skipped_unknown_types`, `errors`.
         `errors` es 0 si el export fue SUCCESS, 1 si fue FAILURE.
     """
+    # SSRF hardening: validar el endpoint ANTES de leer el ledger / exportar.
+    _validate_endpoint(endpoint)
+
     reader = LedgerReader(ledger_path)
     spans = []
     skipped = 0

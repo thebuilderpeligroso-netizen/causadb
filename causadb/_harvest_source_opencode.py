@@ -56,7 +56,7 @@ from typing import Iterator, Optional
 
 from causadb._agent_transcript import infer_step_type
 from causadb._harvest_source import HarvestSource
-from causadb._store_discovery import normalize_store_path
+from causadb._store_discovery import normalize_store_path, sanitize_sqlite_uri
 
 BATCH_SIZE = 500
 
@@ -173,7 +173,10 @@ class OpenCodeHarvestSource(HarvestSource):
         # store real lo administra el proceso de opencode, no nosotros).
         # FIX.GEN-A: harvest es un generador (yield por raw, sin materializar
         # lista); el finally cierra la conexión cuando se extenúa o se cierra.
-        con = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+        # Hardening C-12: el guard de sqlite (fail-closed) + escape de URI se
+        # aplican AQUÍ en el connect (no en query): path no-archivo/no-link →
+        # ValueError; ?#& se escapan para no reinterpretar mode=ro.
+        con = sqlite3.connect(sanitize_sqlite_uri(self.db_path), uri=True)
         try:
             # --- CLAMP_GAP_OCB (BIT-CHR.105): reconciliar cursor adelantado.
             # opencode compacta la tabla `part` (VACUUM/re-create) que resetea

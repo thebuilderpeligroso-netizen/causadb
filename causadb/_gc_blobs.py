@@ -27,11 +27,14 @@ Ledger Monism (Art. I): el GC NO escribe al ledger — solo mueve blobs.
 
 import gzip
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Tuple
 
 from causadb._ledger_validator import LedgerValidator
+
+logger = logging.getLogger(__name__)
 
 _HARVEST_BLOB_REQUIRED_KEYS = frozenset({"path", "content", "size", "mtime"})
 
@@ -44,6 +47,7 @@ class GarbageCollectionReport:
     orphans: List[Tuple[str, str]] = field(default_factory=list)
     by_class: Dict[str, int] = field(default_factory=dict)
     moved: List[Tuple[str, str]] = field(default_factory=list)
+    corrupt_manifests: List[str] = field(default_factory=list)
 
 
 class BlobGC:
@@ -66,7 +70,9 @@ class BlobGC:
                     f"Dry-run is available without validation."
                 )
 
-        referenced_payload, referenced_snapshot = self._collect_referenced_hashes()
+        referenced_payload, referenced_snapshot, corrupt_manifests = (
+            self._collect_referenced_hashes()
+        )
         disk_blobs = self._scan_disk_blobs()
         harvest_hashes = self._identify_harvest_blobs(disk_blobs)
 
@@ -85,7 +91,19 @@ class BlobGC:
 
         moved = []
         if not dry_run and orphans:
-            moved = self._move_orphans_to_trash(orphans)
+            if corrupt_manifests:
+                # Fail-safe: un manifest corrupto significa que sus refs son
+                # desconocidas. NO podemos saber qué blobs están referenciados,
+                # así que NO movemos nada a .trash (evita data loss silencioso).
+                logger.warning(
+                    "GC skip trash move: %d snapshot manifest(s) corrupt/unreadable "
+                    "(%s). Cannot determine transitive refs — refusing to move "
+                    "orphans to .trash. Inspect before running GC again.",
+                    len(corrupt_manifests),
+                    ", ".join(corrupt_manifests[:5]),
+                )
+            else:
+                moved = self._move_orphans_to_trash(orphans)
 
         return GarbageCollectionReport(
             executed=not dry_run,
@@ -94,6 +112,7 @@ class BlobGC:
             orphans=orphans,
             by_class=by_class,
             moved=moved,
+            corrupt_manifests=corrupt_manifests,
         )
 
     def _ledger_files(self) -> List[str]:
@@ -107,7 +126,7 @@ class BlobGC:
             files.append(self.ledger_path)
         return files
 
-    def _collect_referenced_hashes(self) -> Tuple[Set[str], Set[str]]:
+    def _collect_referenced_hashes(self) -> Tuple[Set[str], Set[str], List[str]]:
         payload_refs = set()
         snapshot_refs = set()
 
@@ -125,7 +144,7 @@ class BlobGC:
                         except json.JSONDecodeError:
                             continue
                         event = entry.get("event", {})
-                        
+
                         payload = event.get("payload", {})
                         if isinstance(payload, dict) and "$blob" in payload:
                             blob_hash = payload["$blob"]
@@ -139,22 +158,44 @@ class BlobGC:
                             snapshot_refs.add(post)
             except (OSError, gzip.BadGzipFile):
                 continue
-        
-        # Opción A: Resolver referencias transitivas dentro de los snapshots
+
+        # Resolver refs TRANSITIVAS dentro de los snapshots (BFS): un snapshot
+        # manifest puede referenciar OTRO snapshot manifest via `blob_refs`
+        # (snapshots anidados). Recursamos la cadena completa, no solo 1 nivel.
+        # Un manifest corrupto/ilegible se loggea y se registra (fail-safe: el
+        # GC no moverá nada a .trash porque sus refs son desconocidas).
         from causadb._blob_store import BlobStore
         store = BlobStore(self.blob_store_path)
-        
+
         all_snapshot_refs = set(snapshot_refs)
-        for snap_hash in snapshot_refs:
+        corrupt_manifests = []
+        queue = list(snapshot_refs)
+        visited = set(snapshot_refs)
+        while queue:
+            snap_hash = queue.pop(0)
             try:
                 manifest = store.get(snap_hash)
-                if isinstance(manifest, dict) and "blob_refs" in manifest:
-                    for bhash in manifest["blob_refs"].values():
-                        all_snapshot_refs.add(bhash)
-            except (FileNotFoundError, json.JSONDecodeError, OSError):
+            except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+                logger.warning(
+                    "GC: snapshot manifest %s unreadable/corrupt (%s) — "
+                    "transitive refs unknown, skipping (fail-safe).",
+                    snap_hash,
+                    type(exc).__name__,
+                )
+                corrupt_manifests.append(snap_hash)
                 continue
+            if not isinstance(manifest, dict) or "blob_refs" not in manifest:
+                continue
+            for bhash in manifest["blob_refs"].values():
+                if bhash in visited:
+                    continue
+                visited.add(bhash)
+                all_snapshot_refs.add(bhash)
+                # Si el blob referenciado es a su vez un snapshot manifest,
+                # recursar (puede tener sus propios blob_refs).
+                queue.append(bhash)
 
-        return payload_refs, all_snapshot_refs
+        return payload_refs, all_snapshot_refs, corrupt_manifests
 
     def _scan_disk_blobs(self) -> List[Tuple[str, str]]:
         blobs = []

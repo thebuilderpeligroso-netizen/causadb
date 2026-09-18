@@ -24,6 +24,7 @@ from causadb._store_discovery import (
     discover_chats_dirs,
     normalize_store_path,
     coverage_gaps,
+    sanitize_sqlite_uri,
 )
 
 
@@ -107,6 +108,39 @@ def test_normalize_store_path_missing_or_corrupt_config(tmp_path):
     bad = tmp_path / "bad.json"
     bad.write_text("{ invalid")
     assert normalize_store_path("CAUSADB_OPENCODE_DB_PATH", str(bad), default) == default
+
+
+# ---------------------------------------------------------------------------
+# t4 — hardening C-10/C-12: canonicalización + guard de sqlite (fail-closed)
+# ---------------------------------------------------------------------------
+
+def test_normalize_store_path_env_canonicalized_but_sqlite_guard_rejects_nonfile(tmp_path, monkeypatch):
+    """Env override a /etc/ (escape hatch, NO se confina) se canonicaliza con
+    realpath+expanduser, pero el guard de sqlite rechaza un path que no es
+    archivo ni symlink (fail-closed, C-10/C-12)."""
+    monkeypatch.setenv("CAUSADB_OPENCODE_DB_PATH", "/etc/")
+    resolved = normalize_store_path(
+        "CAUSADB_OPENCODE_DB_PATH", "/no/existe.json", "/tmp/default.db"
+    )
+    assert resolved == "/etc", f"env debe canonicalizarse (realpath), obtuvo {resolved!r}"
+    with pytest.raises(ValueError):
+        sanitize_sqlite_uri(resolved)
+
+
+def test_sanitize_sqlite_uri_escapes_uri_chars(tmp_path):
+    """Un path con ?#& no debe reinterpretar mode=ro (C-12): se escapa con
+    urllib.parse.quote y el guard acepta un archivo real."""
+    db = tmp_path / "weird#name?with&chars.db"
+    db.write_bytes(b"")  # archivo real en disco
+    uri = sanitize_sqlite_uri(str(db))
+    assert uri.endswith("?mode=ro")
+    path_part = uri.split("?mode=ro")[0]
+    assert "?" not in path_part and "#" not in path_part and "&" not in path_part, (
+        f"caracteres de URI crudos en el path: {path_part!r}"
+    )
+    assert "%3F" in uri and "%23" in uri and "%26" in uri, (
+        f"?#& deben escaparse (quote), obtuvo {uri!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

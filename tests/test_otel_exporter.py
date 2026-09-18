@@ -358,3 +358,56 @@ def test_anti_teatro_otel_exporter_skips_real_export(tmp_path):
         # Restaurar el método original
         OTLPSpanExporter.export = original_export
         _stop_mock_server(server)
+
+
+# ---------------------------------------------------------------------------
+# Test 8 (ADDED) — Security hardening: allowlist de endpoints (SSRF)
+# ---------------------------------------------------------------------------
+
+class TestOtelExporterEndpointAllowlist:
+    """`export_ledger` debe validar el endpoint antes de exportar.
+
+    - Scheme http(s) únicamente (rechaza ftp://, file://, etc.).
+    - Por defecto solo loopback (localhost/127.0.0.1/::1).
+    - Env `CAUSADB_OTEL_ALLOWED_ENDPOINTS` extiende la allowlist.
+    Un endpoint inválido → ValueError (el CLI lo convierte en exit 1).
+    """
+
+    def test_rejects_non_http_scheme(self, tmp_path):
+        ledger_path = _make_ledger(tmp_path, [_llm_invoked()])
+        with pytest.raises(ValueError, match="scheme"):
+            export_ledger(ledger_path, endpoint="ftp://example.com/v1/traces")
+
+    def test_rejects_file_scheme(self, tmp_path):
+        ledger_path = _make_ledger(tmp_path, [_llm_invoked()])
+        with pytest.raises(ValueError, match="scheme"):
+            export_ledger(ledger_path, endpoint="file:///etc/passwd")
+
+    def test_rejects_non_loopback_by_default(self, tmp_path):
+        ledger_path = _make_ledger(tmp_path, [_llm_invoked()])
+        with pytest.raises(ValueError, match="allowlist"):
+            export_ledger(ledger_path, endpoint="http://example.com/v1/traces")
+
+    def test_allows_loopback_http(self, tmp_path):
+        server, base_url = _start_mock_server()
+        try:
+            ledger_path = _make_ledger(tmp_path, [_llm_invoked()])
+            result = export_ledger(ledger_path, endpoint=base_url + "/v1/traces")
+            assert result["exported_spans"] == 1, f"expected 1, got {result}"
+        finally:
+            _stop_mock_server(server)
+
+    def test_allows_https_scheme_loopback(self, tmp_path):
+        from causadb.otel._exporter import _validate_endpoint
+        # https sobre loopback es válido (no hacemos request real aquí).
+        _validate_endpoint("https://127.0.0.1:6006/v1/traces")
+
+    def test_env_extends_allowlist(self, tmp_path, monkeypatch):
+        from causadb.otel._exporter import _validate_endpoint
+        monkeypatch.setenv("CAUSADB_OTEL_ALLOWED_ENDPOINTS", "collector.example.com,otel.internal")
+        # Hosts de la env var pasan la validación.
+        _validate_endpoint("http://collector.example.com/v1/traces")
+        _validate_endpoint("https://otel.internal/v1/traces")
+        # Hosts fuera de la allowlist (default + env) siguen rechazados.
+        with pytest.raises(ValueError, match="allowlist"):
+            _validate_endpoint("http://other.example.com/v1/traces")

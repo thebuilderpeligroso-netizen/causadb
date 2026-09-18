@@ -40,6 +40,7 @@ from causadb._ledger_reader import LedgerReader
 from causadb._ledger_writer import LedgerWriter
 from causadb._replay_engine import ReplayEngine
 from causadb._config import CausaDBConfig
+from causadb._score import _collapse_warnings
 
 
 FILE_TREE_MAX_LINES = 200
@@ -604,10 +605,9 @@ def _generate_revive_markdown(data: Dict[str, Any]) -> str:
         lines.append(f"- **Survival:** {score.get('survival_score', 'N/A')}/100")
         score_warnings = score.get("warnings", [])
         if score_warnings:
-            snap_missing = [w for w in score_warnings if "no_snapshots_for_" in w]
-            other = [w for w in score_warnings if "no_snapshots_for_" not in w]
-            if snap_missing:
-                lines.append(f"- **Warnings:** {len(snap_missing)} eventos sin snapshot (no_snapshots_for_*)")
+            n_missing, other = _collapse_warnings(score_warnings)
+            if n_missing:
+                lines.append(f"- **Warnings:** {n_missing} eventos sin snapshot (no_snapshots_for_*) — ver JSON para event_ids")
             if other:
                 lines.append(f"- **Warnings:** {', '.join(other)}")
         lines.append("")

@@ -14,10 +14,39 @@ auto-discovery. The test command is run with ``cwd=workspace``.
 
 import json
 import os
+import sys
 from typing import Tuple
 
 from causadb._bisect import bisect, BisectError
 from causadb._workspace import resolve_ledger, NoWorkspaceError
+
+
+def _confirm_shell_trust(test_cmd: str) -> bool:
+    """Confirmación SOLO en capa CLI/TTY (security hardening).
+
+    `bisect --test` ejecuta *test_cmd* con ``shell=True`` (confianza total:
+    el comando corre con los permisos del operador). En un TTY pedimos
+    confirmación explícita antes de ejecutar nada. En modo no-interactivo
+    (CI/scripts, stdin no es TTY) procedemos sin preguntar — no bloqueamos.
+
+    La función `bisect()` (capa core) sigue NO-interactiva: esta
+    confirmación vive únicamente aquí, en la capa CLI.
+
+    Returns:
+        True si se procede (confirmado en TTY, o stdin no es TTY).
+    """
+    if not sys.stdin.isatty():
+        return True
+    try:
+        answer = input(
+            "⚠  `bisect --test` ejecuta el comando con shell=True "
+            "(confianza total en el test_cmd).\n"
+            f"    Comando: {test_cmd}\n"
+            "¿Continuar? [y/N]: "
+        ).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return answer in ("y", "yes")
 
 
 def _resolve_watch_dir(ledger_path: str) -> str:
@@ -49,6 +78,10 @@ def cmd_bisect(args) -> Tuple[int, str]:
 
     if not test_cmd:
         return (1, json.dumps({"error": "--test is required"}))
+
+    # Confirmación SOLO en capa CLI/TTY. `bisect()` (core) sigue no-interactiva.
+    if not _confirm_shell_trust(test_cmd):
+        return (1, json.dumps({"error": "bisect abortado por el usuario"}))
 
     try:
         ledger = resolve_ledger(ledger)

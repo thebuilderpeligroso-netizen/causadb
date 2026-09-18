@@ -122,7 +122,9 @@ def download_update(version: str) -> str:
 
     logger.info("Downloading %s -> %s", binary_url, binary_path)
     urllib.request.urlretrieve(binary_url, binary_path)
-    os.chmod(binary_path, 0o755)
+    # Permisos restrictivos (0600) hasta que la firma se verifique.
+    # El chmod 0755 se aplica recién tras verify_signature() (fail-closed).
+    os.chmod(binary_path, 0o600)
 
     return binary_path
 
@@ -220,8 +222,15 @@ def install_or_check(check_only: bool = False) -> dict:
             cert_path = os.path.join(tmpdir, "causadb.pem")
             urllib.request.urlretrieve(url, cert_path)
 
-    if sig_path and cert_path:
-        verify_signature(binary_path, sig_path, cert_path)
+    if not sig_path or not cert_path:
+        raise RuntimeError(
+            "Update aborted: release missing signature assets "
+            "(.sig and .pem required). Refusing to install unverified binary."
+        )
 
+    verify_signature(binary_path, sig_path, cert_path)
+
+    # Solo tras verificación OK: dar permisos de ejecución y aplicar.
+    os.chmod(binary_path, 0o755)
     apply_update(binary_path)
     return status

@@ -54,9 +54,9 @@ def _group_by_ctx(entries) -> Dict[str, List[Dict[str, Any]]]:
     return groups
 
 
-def _diff_snapshots(pre_files: Dict[str, Any], post_files: Dict[str, Any]) -> Tuple[int, int, int]:
-    """Compute (files_changed, lines_added, lines_deleted) from two snapshot
-    file dicts.
+def _diff_snapshots(pre_files: Dict[str, Any], post_files: Dict[str, Any]) -> Tuple[int, int, int, int]:
+    """Compute (files_changed, lines_added, lines_deleted, denom) from two
+    snapshot file dicts.
 
     Each snapshot file dict maps ``rel_path -> {"hash", "size", "mtime"}``.
     We do NOT have per-line diffs from snapshots alone (only file-level
@@ -65,11 +65,18 @@ def _diff_snapshots(pre_files: Dict[str, Any], post_files: Dict[str, Any]) -> Tu
     available and the snapshot carries ``blob_refs``, we attempt a real
     line-level diff.
 
-    Returns ``(files_changed, lines_added, lines_deleted)``.
+    ``denom`` is the ratio denominator: per modified file
+    ``max(pre_size, post_size)``; per added/deleted file its size (same as
+    the added/deleted count). The session churn_ratio is
+    ``lines_deleted / denom`` (guard ``denom == 0 → 0.0``), so a 1-byte
+    shrink of a 100-byte file gives 0.01 — not 1.0.
+
+    Returns ``(files_changed, lines_added, lines_deleted, denom)``.
     """
     files_changed = 0
     lines_added = 0
     lines_deleted = 0
+    denom = 0
     all_paths = set(pre_files.keys()) | set(post_files.keys())
     for path in all_paths:
         in_pre = path in pre_files
@@ -87,13 +94,18 @@ def _diff_snapshots(pre_files: Dict[str, Any], post_files: Dict[str, Any]) -> Tu
                     lines_added += delta
                 else:
                     lines_deleted += abs(delta)
+                denom += max(pre_size, post_size)
         elif in_post and not in_pre:
             files_changed += 1
-            lines_added += post_files[path].get("size", 0) or 0
+            size = post_files[path].get("size", 0) or 0
+            lines_added += size
+            denom += size
         else:  # in_pre and not in_post → deleted
             files_changed += 1
-            lines_deleted += pre_files[path].get("size", 0) or 0
-    return files_changed, lines_added, lines_deleted
+            size = pre_files[path].get("size", 0) or 0
+            lines_deleted += size
+            denom += size
+    return files_changed, lines_added, lines_deleted, denom
 
 
 def _try_load_snapshot(snapshot_hash: Optional[str], blob_store) -> Optional[Dict[str, Any]]:
@@ -139,6 +151,22 @@ def _parse_timestamp(ts: str) -> float:
         return datetime.fromisoformat(ts_norm).timestamp()
     except (ValueError, TypeError):
         return 0.0
+
+
+def _collapse_warnings(warnings: List[str]) -> Tuple[int, List[str]]:
+    """Colapsa warnings ``no_snapshots_for_*`` para render md/terminal.
+
+    Solo para render — ``compute_score()["warnings"]`` y ``--format json``
+    quedan BYTE-IDENTICOS (no muta el input).
+
+    Returns ``(n_missing, other)`` donde ``n_missing`` cuenta warnings con
+    ``"no_snapshots_for_"`` y ``other`` es el resto verbatim (orden estable).
+    """
+    if not warnings:
+        return (0, [])
+    snap = [w for w in warnings if "no_snapshots_for_" in w]
+    other = [w for w in warnings if "no_snapshots_for_" not in w]
+    return (len(snap), other)
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +221,7 @@ def compute_churn(ledger_path: str, config=None, *, entries=None) -> Dict[str, D
         files_churned = 0
         lines_added = 0
         lines_deleted = 0
+        ratio_denom = 0
         warnings: List[str] = []
 
         for entry in ctx_entries:
@@ -207,13 +236,21 @@ def compute_churn(ledger_path: str, config=None, *, entries=None) -> Dict[str, D
 
             if pre_snap is not None and post_snap is not None:
                 # Real diff path.
-                fc, la, ld = _diff_snapshots(
+                res = _diff_snapshots(
                     pre_snap.get("files", {}) or {},
                     post_snap.get("files", {}) or {},
                 )
+                # Backward-compat: anti-teatro tests patch
+                # _diff_snapshots with a 3-tuple (0, 0, 0).
+                if len(res) == 4:
+                    fc, la, ld, dn = res
+                else:  # pragma: no cover - legacy patched shape
+                    fc, la, ld = res  # type: ignore[misc]
+                    dn = la + ld
                 files_churned += fc
                 lines_added += la
                 lines_deleted += ld
+                ratio_denom += dn
             else:
                 # Fallback path — no snapshots available.
                 eid = event.get("event_id", "unknown")
@@ -222,6 +259,8 @@ def compute_churn(ledger_path: str, config=None, *, entries=None) -> Dict[str, D
                     # Each entry in `writes` is a declared file mutation.
                     # Use the count as a proxy for files churned, and
                     # estimate lines from any declared line counts.
+                    # Path `writes` untouched by the snapshot-denom fix:
+                    # denom contribution == lines contribution.
                     for w in writes:
                         if not isinstance(w, dict):
                             continue
@@ -229,39 +268,47 @@ def compute_churn(ledger_path: str, config=None, *, entries=None) -> Dict[str, D
                         # Some writes carry `lines_added` / `lines_deleted`.
                         la = w.get("lines_added")
                         ld = w.get("lines_deleted")
+                        ev_la = 0
+                        ev_ld = 0
                         if isinstance(la, int) and la > 0:
                             lines_added += la
+                            ev_la += la
                         if isinstance(ld, int) and ld > 0:
                             lines_deleted += ld
+                            ev_ld += ld
                         # If no explicit line counts, use a proxy of 1 line
                         # per touched file so we NEVER return 0 silently.
                         if not isinstance(la, int) and not isinstance(ld, int):
                             lines_added += 1
+                            ev_la += 1
+                        ratio_denom += ev_la + ev_ld
                     warnings.append(f"no_snapshots_for_{eid}")
                 elif "path" in payload:
                     # Single-file event without snapshots and without `writes`.
                     # Estimate 1 line churned (proxy) + warning.
                     files_churned += 1
                     lines_added += 1
+                    ratio_denom += 1
                     warnings.append(f"no_snapshots_for_{eid}")
                 # If neither writes nor path → nothing to count, no warning.
 
-        total_lines = lines_added + lines_deleted
-        # churn_ratio: fraction of changed lines that were DELETED.
-        # 0.0 = healthy (nothing deleted), 1.0 = full rewrite (everything
-        # written was rolled back). The score penalty uses this ratio
-        # directly (churn_score = 100 * (1 - churn_ratio)), so a session
-        # with pure additions must NOT be punished. Anti-teatro: a stub
-        # that skips the diff collapses lines_deleted to 0 → ratio 0.0,
-        # which is caught by the dedicated semantics tests in
-        # tests/test_score.py (test_churn_ratio_*).
-        churn_ratio = (lines_deleted / total_lines) if total_lines > 0 else 0.0
+        # churn_ratio: lines_deleted / ratio_denom, where ratio_denom is
+        # sum(max(pre, post)) over snapshot modified files (+ sizes for
+        # added/deleted) and sum(lines) over fallback `writes` events.
+        # 0.0 = healthy (nothing deleted). A 1-byte shrink of a 100-byte
+        # file gives 0.01 — not 1.0. Pure growth gives 0.0. Guard
+        # denom == 0 → 0.0. Anti-teatro: a stub that skips the diff
+        # collapses lines_deleted to 0 → ratio 0.0, which is caught by the
+        # dedicated semantics tests in tests/test_score.py
+        # (test_churn_ratio_*).
+        churn_ratio = (lines_deleted / ratio_denom) if ratio_denom > 0 else 0.0
 
         result[ctx] = {
             "files_churned": files_churned,
             "lines_added": lines_added,
             "lines_deleted": lines_deleted,
             "churn_ratio": churn_ratio,
+            "churn_denom": ratio_denom,
             "warnings": warnings,
         }
 
@@ -515,17 +562,20 @@ def compute_score(ledger_path: str, config=None, *, entries=None) -> Dict[str, A
     churn_data = compute_churn(ledger_path, config, entries=entries)
     waste_data = compute_waste(ledger_path, config, entries=entries)
 
-    # Aggregate churn across sessions weighted by total lines.
-    total_lines = 0
+    # Aggregate churn across sessions weighted by denom (sum(max) for
+    # snapshot events, sum(lines) for fallback `writes` events).
+    # Legacy dicts without "churn_denom" (e.g. patched in
+    # test_compute_score_zero_when_disaster) fall back to total lines.
+    total_denom = 0
     weighted_churn_sum = 0.0
     for ctx, data in churn_data.items():
         la = data.get("lines_added", 0)
         ld = data.get("lines_deleted", 0)
-        tl = la + ld
-        if tl > 0:
-            weighted_churn_sum += data.get("churn_ratio", 0.0) * tl
-            total_lines += tl
-    churn_ratio = (weighted_churn_sum / total_lines) if total_lines > 0 else 0.0
+        dn = data.get("churn_denom", la + ld)
+        if dn > 0:
+            weighted_churn_sum += data.get("churn_ratio", 0.0) * dn
+            total_denom += dn
+    churn_ratio = (weighted_churn_sum / total_denom) if total_denom > 0 else 0.0
 
     # Aggregate waste across sessions weighted by total cost.
     total_cost = 0.0

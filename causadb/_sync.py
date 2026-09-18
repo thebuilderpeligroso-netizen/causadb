@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 SYNC_STATE_FILENAME = "sync_state.json"
 
+# Hub API key en Secrets (keyring/env), no en claro en el JSON.
+# Migración gradual: configure() sigue persistiendo el legacy ``api_key``
+# (compat con tests/estados viejos); _resolve_api_key() lo mueve a Secrets
+# y lo borra del JSON en el próximo push/pull.
+SYNC_HUB_SECRET_KEY = "sync_hub_api_key"
+
 
 class SyncError(Exception):
     """Base error for sync operations."""
@@ -80,13 +86,63 @@ class SyncEngine:
         state["api_key"] = api_key
         state["interval_minutes"] = interval_minutes
         self._save_state(state)
+        # Mejor esfuerzo: también guardar en Secrets (keyring/env).
+        # El JSON legacy se limpia en _resolve_api_key() (próximo push/pull).
+        try:
+            from causadb._secrets import Secrets
+            if api_key:
+                Secrets.set(SYNC_HUB_SECRET_KEY, api_key)
+        except Exception:
+            pass
+
+    def _resolve_api_key(self, state: dict) -> str:
+        """Hub API key: Secrets primero, legacy JSON después.
+
+        Si la clave vive aún en el JSON, se migra a Secrets (mejor
+        esfuerzo) y se borra del archivo. Nunca retorna None.
+        """
+        try:
+            from causadb._secrets import Secrets
+        except ImportError:
+            return state.get("api_key", "") or ""
+        try:
+            val = Secrets.get(SYNC_HUB_SECRET_KEY)
+            if val:
+                if state.get("api_key"):
+                    state.pop("api_key", None)
+                    try:
+                        self._save_state(state)
+                    except Exception:
+                        pass
+                return val
+        except KeyError:
+            pass
+        except Exception:
+            pass
+        legacy = state.get("api_key", "") or ""
+        if legacy:
+            try:
+                Secrets.set(SYNC_HUB_SECRET_KEY, legacy)
+            except Exception:
+                return legacy
+            state.pop("api_key", None)
+            try:
+                self._save_state(state)
+            except Exception:
+                pass
+        return legacy
 
     def get_config(self) -> dict:
         """Get current sync config (``api_key`` is masked for safety)."""
         state = self._load_state()
+        try:
+            from causadb._secrets import Secrets
+            has_key = Secrets.has(SYNC_HUB_SECRET_KEY) or bool(state.get("api_key", ""))
+        except Exception:
+            has_key = bool(state.get("api_key", ""))
         return {
             "hub_url": state.get("hub_url", ""),
-            "has_api_key": bool(state.get("api_key", "")),
+            "has_api_key": has_key,
             "last_synced_seq": state.get("last_synced_seq", 0),
             "interval_minutes": state.get("interval_minutes", 60),
             "ledger_path": self.ledger_path,
@@ -134,6 +190,34 @@ class SyncEngine:
     # Push / Pull
     # ------------------------------------------------------------------
 
+    def _redact_events_for_push(self, events: List[dict]) -> List[dict]:
+        """Redacta payloads antes de enviar al hub (defensa en profundidad).
+
+        El writer ya redacta al escribir, pero el ledger puede traer eventos
+        viejos en claro (pre-redacción). Nunca enviar secretos en claro.
+        """
+        try:
+            from causadb._redactor import redact_payload
+            from causadb._config import CausaDBConfig
+        except ImportError:
+            return events
+        try:
+            config = CausaDBConfig.from_env_with_overrides(self.ledger_path)
+        except Exception:
+            return events
+        import copy
+        out: List[dict] = []
+        for entry in events:
+            try:
+                e = copy.deepcopy(entry)
+                ev = e.get("event")
+                if isinstance(ev, dict) and isinstance(ev.get("payload"), dict):
+                    ev["payload"] = redact_payload(dict(ev["payload"]), config)
+                out.append(e)
+            except Exception:
+                out.append(entry)
+        return out
+
     def push(self) -> dict:
         """Push new local events to the hub.
 
@@ -145,7 +229,7 @@ class SyncEngine:
         """
         state = self._load_state()
         hub_url = state.get("hub_url", "")
-        api_key = state.get("api_key", "")
+        api_key = self._resolve_api_key(state)
 
         if not hub_url:
             raise SyncError(
@@ -160,8 +244,9 @@ class SyncEngine:
             return {"pushed": 0, "last_seq": last_seq, "status": "no_new_events"}
 
         url = f"{hub_url}/sync/push"
+        redacted_events = self._redact_events_for_push(events)
         payload = json.dumps({
-            "events": events,
+            "events": redacted_events,
             "last_seq": last_seq,
             "node_id": self._get_node_id(),
         }).encode()
@@ -206,7 +291,7 @@ class SyncEngine:
         """
         state = self._load_state()
         hub_url = state.get("hub_url", "")
-        api_key = state.get("api_key", "")
+        api_key = self._resolve_api_key(state)
 
         if not hub_url:
             raise SyncError(
@@ -237,17 +322,32 @@ class SyncEngine:
             from causadb._event_schema import CanonicalEvent
             from causadb._ledger_writer import LedgerWriter
 
+            # Validar TODOS los eventos antes de apendar nada (atómico).
+            # Un evento inválido aborta el pull completo: SyncError sin
+            # append parcial ni avance de seq (fail-closed, Art. IX).
+            parsed: List[Tuple[Any, dict]] = []
+            for entry in remote_events:
+                ev_data = entry.get("event", entry)
+                if not isinstance(ev_data, dict):
+                    raise SyncError(
+                        "Failed to import events: invalid event entry"
+                    )
+                try:
+                    event = CanonicalEvent.from_dict(ev_data)
+                except Exception as e:
+                    raise SyncError(
+                        f"Failed to import events: invalid event: {e}"
+                    )
+                parsed.append((event, ev_data))
+
             try:
                 writer = LedgerWriter(self.ledger_path)
-                for entry in remote_events:
-                    ev_data = entry.get("event", entry)
-                    if isinstance(ev_data, dict):
-                        event = CanonicalEvent.from_dict(ev_data)
-                        writer.append(event)
-                        imported += 1
-                        seq = ev_data.get("sequence_number", 0)
-                        if seq > last_seq_remote:
-                            last_seq_remote = seq
+                for event, ev_data in parsed:
+                    writer.append(event)
+                    imported += 1
+                    seq = ev_data.get("sequence_number", 0)
+                    if seq > last_seq_remote:
+                        last_seq_remote = seq
             except Exception as e:
                 raise SyncError(f"Failed to import events: {e}")
 

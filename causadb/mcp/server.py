@@ -1046,6 +1046,97 @@ def _wrap_tool_with_redaction(server, tool_name: str, config) -> None:
     tool.fn = wrapper
 
 
+HTTP_SLIM_NOTICE = (
+    "slim by default, pass include_payloads=true for full payloads "
+    "(blobs resolved on demand)"
+)
+
+
+def _apply_http_ledger_pin(server, pinned_ledger: str) -> None:
+    """Fail-closed ledger pin for network mode (403 wrong-ledger).
+
+    Wraps Tool.run (raw arguments, pre-validation) so an explicit
+    client ledger_path != pinned default raises instead of silent use.
+    Omitted ledger_path uses the pinned default (allowed).
+    """
+    try:
+        tools = server._tool_manager._tools
+        names = list(tools.keys()) if isinstance(tools, dict) else list(HTTP_SAFE_TOOLS)
+    except Exception:
+        names = list(HTTP_SAFE_TOOLS)
+    for name in names:
+        try:
+            tool = server._tool_manager.get_tool(name)
+        except Exception:
+            continue
+        orig_run = tool.run
+
+        def _make_pinned(orig):
+            async def _pinned_run(arguments=None, context=None, convert_result=False):
+                provided = (arguments or {}).get("ledger_path")
+                if provided is not None and os.path.abspath(provided) != os.path.abspath(pinned_ledger):
+                    raise ValueError(
+                        f"403 wrong-ledger: ledger_path {provided!r} != pinned "
+                        f"{pinned_ledger!r} (fail-closed)"
+                    )
+                return await orig(arguments, context=context, convert_result=convert_result)
+            return _pinned_run
+
+        # `run` es un método de Tool (no un campo pydantic): asignarlo con
+        # `tool.run = ...` dispara ValueError ("no field run"). Se setea como
+        # atributo de instancia vía object.__setattr__ (bypass pydantic) para
+        # sombrear el método por instancia.
+        object.__setattr__(tool, "run", _make_pinned(orig_run))
+
+
+def _apply_http_query_slim(server) -> None:
+    """Slim-by-default for query in network mode only (Tool.run wrapper).
+
+    FastMCP fills include_payloads=True when omitted (arg_model default),
+    so fn-level defaults can't distinguish opt-in. Wrapping Tool.run
+    (raw arguments) does: missing -> False + envelope notice.
+    stdio (_tools.causadb_query default True) untouched.
+    """
+    try:
+        tool = server._tool_manager.get_tool("query")
+    except Exception:
+        return
+    orig_run = tool.run
+
+    async def _slim_run(arguments=None, context=None, convert_result=False):
+        args = dict(arguments or {})
+        slim = False
+        if "include_payloads" not in args:
+            args["include_payloads"] = False
+            slim = True
+        else:
+            slim = not args.get("include_payloads")
+        # Pedir el resultado CRUDO (JSON string) para poder inyectar el aviso
+        # en el envelope ANTES de la conversión a content blocks. Si se pidiera
+        # convert_result=True, orig_run devolvería bloques (no str) y el aviso
+        # se perdería. La conversión se re-aplica abajo si el caller la pidió.
+        result = await orig_run(args, context=context, convert_result=False)
+        if slim and isinstance(result, str):
+            try:
+                data = json.loads(result)
+            except Exception:
+                data = None
+            if isinstance(data, dict) and "message" in data and "events" in data:
+                existing = data.get("message") or ""
+                if "slim by default" not in existing.lower():
+                    data["message"] = (
+                        (existing + " " if existing else "") + HTTP_SLIM_NOTICE
+                    )
+                    result = json.dumps(data, default=str, sort_keys=True)
+        if convert_result:
+            result = tool.fn_metadata.convert_result(result)
+        return result
+
+    # Mismo patrón que _apply_http_ledger_pin: `run` es método, no campo
+    # pydantic — object.__setattr__ sombrea el método por instancia.
+    object.__setattr__(tool, "run", _slim_run)
+
+
 async def _apply_http_security(server, config) -> dict:
     """Apply the full network-mode security subset to a server.
 
@@ -1055,6 +1146,10 @@ async def _apply_http_security(server, config) -> dict:
     resources = _apply_http_resource_subset(server)
     for name in ("query", "revive", "shared_document_read"):
         _wrap_tool_with_redaction(server, name, config)
+    pinned = getattr(config, "ledger_path", None)
+    if pinned:
+        _apply_http_ledger_pin(server, pinned)
+        _apply_http_query_slim(server)
     return {"tools": tools, "resources": resources}
 
 

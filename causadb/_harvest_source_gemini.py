@@ -177,6 +177,10 @@ class GeminiHarvestSource(HarvestSource):
         #   4. nada → detect() False
         env_dir = os.environ.get("CAUSADB_GEMINI_PROJECT_DIR")
         if env_dir:
+            # Hardening C-10: el env override (escape hatch del operador) se
+            # canonicaliza (realpath+expanduser); no se confina (puede apuntar
+            # a un project dir externo).
+            env_dir = os.path.realpath(os.path.expanduser(env_dir))
             self._mode = "single"
             self.chats_dirs = [os.path.join(env_dir, "chats")]
             return

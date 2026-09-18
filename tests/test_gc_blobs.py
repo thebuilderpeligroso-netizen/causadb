@@ -275,6 +275,118 @@ class TestOrphanDetection:
         assert orphan_hash in [bhash for shard, bhash in report.orphans]
 
 
+class TestTransitiveSnapshotRefs:
+    """GC debe recursar refs transitivas de snapshots (no solo 1 nivel).
+
+    Un snapshot manifest puede referenciar OTRO snapshot manifest via
+    ``blob_refs`` (snapshots anidados). El GC debe seguir la cadena
+    transitiva para no clasificar como huérfano un blob referenciado en
+    profundidad. Este test FALLA en Red porque la implementación actual
+    solo resuelve 1 nivel (``manifest["blob_refs"].values()`` sin recursar).
+    """
+
+    def test_transitive_snapshot_refs_not_orphan(self, tmp_path):
+        ws = tmp_path / "ws"
+        result = causadb_init(str(ws))
+        ledger = result["ledger_path"]
+        blobs_dir = os.path.join(os.path.dirname(ledger), "blobs")
+        store = BlobStore(blobs_dir)
+
+        # Blob de contenido X (hoja).
+        x_hash = store.put({"file_hash": "f1", "content_b64": "eA=="})
+        # Snapshot B referencia X.
+        manifest_b = {
+            "type": "snapshot",
+            "files": {"f1": {"hash": "f1", "size": 1, "mtime": 1}},
+            "blob_refs": {"f1": x_hash},
+        }
+        b_hash = store.put(manifest_b)
+        # Snapshot A referencia B (snapshot anidado).
+        manifest_a = {
+            "type": "snapshot",
+            "files": {"snap_b": {"hash": "b", "size": 1, "mtime": 1}},
+            "blob_refs": {"b": b_hash},
+        }
+        a_hash = store.put(manifest_a)
+
+        config = CausaDBConfig(ledger_path=ledger, blob_store_enabled=True)
+        writer = LedgerWriter(ledger, config=config)
+        writer.append(CanonicalEvent(
+            event_type="PROJECT_SNAPSHOT", ctx_id="test", source="test",
+            payload=MappingProxyType({"note": "nested"}),
+            post_snapshot=a_hash,
+        ))
+
+        report = BlobGC(ledger).collect(dry_run=True)
+        orphan_list = [bhash for shard, bhash in report.orphans]
+
+        assert a_hash not in orphan_list, "snapshot A must not be orphan"
+        assert b_hash not in orphan_list, "nested snapshot B must not be orphan"
+        assert x_hash not in orphan_list, (
+            f"transitively referenced blob X must not be orphan, "
+            f"got orphans={orphan_list!r}"
+        )
+
+
+class TestCorruptManifest:
+    """Manifest corrupto NO debe clasificar como huérfano silencioso.
+
+    Si un snapshot manifest es ilegible (JSON corrupto), sus refs son
+    desconocidas. El GC debe loggear un warning y NO mover nada a
+    ``.trash`` (fail-safe) — no puede saber qué blobs están referenciados.
+    Este test FALLA en Red porque la implementación actual hace
+    ``continue`` silencioso y trastea los blobs referenciados.
+    """
+
+    def test_corrupt_manifest_not_silent_orphan(self, tmp_path, caplog):
+        ws = tmp_path / "ws"
+        result = causadb_init(str(ws))
+        ledger = result["ledger_path"]
+        blobs_dir = os.path.join(os.path.dirname(ledger), "blobs")
+        store = BlobStore(blobs_dir)
+
+        # Blob de contenido X referenciado por un snapshot.
+        x_hash = store.put({"file_hash": "f1", "content_b64": "eA=="})
+        manifest = {
+            "type": "snapshot",
+            "files": {"f1": {"hash": "f1", "size": 1, "mtime": 1}},
+            "blob_refs": {"f1": x_hash},
+        }
+        a_hash = store.put(manifest)
+
+        # Corromper el manifest (JSON inválido).
+        shard = f"{a_hash[:2]}/{a_hash[2:4]}"
+        manifest_path = os.path.join(blobs_dir, shard, f"{a_hash}.json")
+        with open(manifest_path, "w") as f:
+            f.write("NOT_JSON\n")
+
+        config = CausaDBConfig(ledger_path=ledger, blob_store_enabled=True)
+        writer = LedgerWriter(ledger, config=config)
+        writer.append(CanonicalEvent(
+            event_type="PROJECT_SNAPSHOT", ctx_id="test", source="test",
+            payload=MappingProxyType({"note": "corrupt"}),
+            post_snapshot=a_hash,
+        ))
+
+        report = BlobGC(ledger).collect(dry_run=False)
+
+        # Fail-safe: NO se mueve nada a .trash cuando hay manifest corrupto.
+        assert report.moved == [], (
+            f"corrupt manifest must prevent trash move (fail-safe), "
+            f"got moved={report.moved!r}"
+        )
+        # El blob X (referenciado por el manifest corrupto) NO se trastea.
+        assert x_hash not in [bhash for shard, bhash in report.moved], (
+            "blob referenced by corrupt manifest must NOT be moved to trash"
+        )
+        # Se loggea un warning (skip con log, no silencioso).
+        assert any(
+            "manifest" in (r.message or "").lower()
+            or "corrupt" in (r.message or "").lower()
+            for r in caplog.records
+        ), "GC must log a warning about the corrupt manifest"
+
+
 class TestHarvestKeysTolerantToExtraKeys:
     """FIX.3 — _HARVEST_BLOB_KEYS must tolerate extra keys (post-FIX.5 format).
 

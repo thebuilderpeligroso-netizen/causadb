@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.parse
 from glob import glob
 from typing import Optional
 
@@ -61,28 +62,66 @@ def discover_chats_dirs(projects_json: Optional[str] = None) -> list[str]:
     return dirs
 
 
-def normalize_store_path(env_var: str, config_file: str, default: str) -> str:
+def _canonicalize(path: str) -> str:
+    """Canonicaliza un path de store: expande ``~`` y resuelve symlinks
+    (realpath). No toca disco (realpath no crea nada)."""
+    return os.path.realpath(os.path.expanduser(path))
+
+
+def normalize_store_path(
+    env_var: str,
+    config_file: Optional[str] = None,
+    default: str = "",
+) -> str:
     """Resuelve el path de un store: env override > config > default.
 
     - ``env_var``: variable de entorno del store (ej. ``CAUSADB_OPENCODE_DB_PATH``).
     - ``config_file``: config del agente (forward-compat); se lee la key
       ``data`` (ej. ``~/.config/opencode/opencode.json`` → ``{"data": ...}``).
+      Opcional: fuentes sin config (ej. codex) pasan ``None``.
     - ``default``: path por defecto del usuario.
 
     Fail-open: config ausente/corrupto/sin key ``data`` → default (nunca
     crash). El env override SIEMPRE gana (el operador manda).
+
+    Hardening (C-10): el resultado se canonicaliza con realpath+expanduser.
+    El env override es el **escape hatch** del operador: se confía y NO se
+    confina (puede apuntar a rutas externas); solo se canonicaliza. Los paths
+    derivados de config/default se confinan (canonicalizan) igual — sin
+    rechazar externos (el guard de sqlite es quien valida la existencia).
     """
     env_path = os.environ.get(env_var)
     if env_path:
-        return env_path
-    try:
-        with open(config_file) as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return default
-    if isinstance(data, dict) and isinstance(data.get("data"), str) and data["data"]:
-        return data["data"]
-    return default
+        return _canonicalize(env_path)
+    if config_file:
+        try:
+            with open(config_file) as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return _canonicalize(default)
+        if isinstance(data, dict) and isinstance(data.get("data"), str) and data["data"]:
+            return _canonicalize(data["data"])
+    return _canonicalize(default)
+
+
+def sanitize_sqlite_uri(db_path: str) -> str:
+    """Valida y sanea un path de store SQLite para usarlo como URI.
+
+    - Canonicaliza (realpath+expanduser).
+    - Fail-closed (C-12): si el path no es un archivo real ni un symlink →
+      ``ValueError`` (``raise``, no ``assert``: no se elimina con ``-O``).
+    - Escapa los caracteres de URI (``?#&``) con ``urllib.parse.quote`` para
+      que no reinterpretan ``mode=ro`` (C-12).
+
+    Devuelve la URI lista para ``sqlite3.connect(uri, uri=True)``.
+    """
+    resolved = _canonicalize(db_path)
+    if not (os.path.isfile(resolved) or os.path.islink(resolved)):
+        raise ValueError(
+            f"store SQLite no es un archivo ni un symlink: {db_path!r}"
+        )
+    quoted = urllib.parse.quote(resolved)
+    return f"file:{quoted}?mode=ro"
 
 
 def _slug_of_chats_dir(chats_dir: str) -> str:

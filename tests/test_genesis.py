@@ -144,6 +144,57 @@ def test_genesis_codebase_snapshot_event_written_with_blob(tmp_path):
     assert snaps[0].payload["generator"] in ("ast", "codebase-memory")
 
 
+def test_genesis_codebase_snapshot_skips_external_symlinks(tmp_path):
+    """F1.3 hardening: symlinks que apuntan FUERA del proyecto NO se indexan
+    (symlink escape prevention). Este test FALLA en Red porque la
+    implementación actual indexa cualquier archivo .py que os.walk liste,
+    incluidos symlinks a targets externos."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "a.py").write_text("import os\n")
+    external = tmp_path / "external.py"
+    external.write_text("import sys\n")
+    os.symlink(str(external), str(proj / "link.py"))
+
+    from causadb._genesis_codebase import generate_codebase_snapshot
+    snap = generate_codebase_snapshot(str(proj), project_id="pid")
+    ids = [n["id"] for n in snap["nodes"]]
+    assert "a.py" in ids, f"regular file must be indexed, got {ids}"
+    assert "link.py" not in ids, (
+        f"external symlink must NOT be indexed, got {ids}"
+    )
+
+
+def test_genesis_codebase_snapshot_max_files_cap(tmp_path):
+    """F1.3 hardening: cap `max_files` limita cuántos archivos se indexan."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    for i in range(5):
+        (proj / f"f{i}.py").write_text("x = 1\n")
+
+    from causadb._genesis_codebase import generate_codebase_snapshot
+    snap = generate_codebase_snapshot(str(proj), project_id="pid", max_files=2)
+    assert len(snap["nodes"]) == 2, (
+        f"max_files=2 must cap nodes to 2, got {len(snap['nodes'])}"
+    )
+
+
+def test_genesis_codebase_snapshot_max_bytes_cap(tmp_path):
+    """F1.3 hardening: cap `max_bytes` limita los bytes totales leídos."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    # Cada archivo ~101 bytes.
+    for i in range(5):
+        (proj / f"f{i}.py").write_text("#" * 100 + "\n")
+
+    from causadb._genesis_codebase import generate_codebase_snapshot
+    snap = generate_codebase_snapshot(str(proj), project_id="pid", max_bytes=250)
+    # 2 archivos = 202 bytes ≤ 250; el 3ro (303) excede → se corta.
+    assert len(snap["nodes"]) == 2, (
+        f"max_bytes=250 must cap to 2 files (~202 bytes), got {len(snap['nodes'])}"
+    )
+
+
 def test_genesis_codebase_snapshot_degrades_on_failure(tmp_path):
     """F1.3: cualquier fallo degrada a snapshot mínimo sin romper."""
     from causadb._genesis_codebase import generate_codebase_snapshot

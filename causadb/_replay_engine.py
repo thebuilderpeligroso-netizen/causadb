@@ -56,6 +56,7 @@ class ReplayEngine:
             "conversations_recoverable": {},
             "delegations": [],
             "api_attempts": [],
+            "checkpoint_data": {},
         }
 
     def apply(self, event_entry: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
@@ -200,7 +201,13 @@ class ReplayEngine:
             })
             snapshot = payload.get("snapshot")
             if isinstance(snapshot, dict):
-                state.update(snapshot)
+                allowed = set(self._initial_state().keys())
+                bag = state.setdefault("checkpoint_data", {})
+                for k, v in snapshot.items():
+                    if k in allowed:
+                        state[k] = v
+                    else:
+                        bag[k] = v
         elif event_type == "LLM_INVOKED":
             state["llm_invocations"].append({
                 "model": payload.get("model", "unknown"),
@@ -613,7 +620,7 @@ class ReplayEngine:
                 try:
                     entry_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                     if entry_dt > to_dt:
-                        break
+                        continue
                 except (ValueError, TypeError):
                     pass
             state = self.apply(entry, state)

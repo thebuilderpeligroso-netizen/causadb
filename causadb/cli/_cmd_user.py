@@ -52,12 +52,21 @@ def cmd_user(args) -> Tuple[int, str]:
 
 
 def cmd_user_add(args) -> Tuple[int, str]:
-    """``causadb user add --username NAME --password PW [--role ROLE]``"""
+    """``causadb user add --username NAME [--password PW] [--role ROLE]``
+
+    Password resolution (nunca en claro en logs/output):
+        ``args.password`` → ``CAUSADB_USER_PASSWORD`` env → ``getpass`` prompt.
+    """
+    import getpass
+
     try:
         store, _ = _get_user_store()
+        password = args.password or os.environ.get("CAUSADB_USER_PASSWORD") or ""
+        if not password:
+            password = getpass.getpass("Password: ")
         user = store.add_user(
             username=args.username,
-            password=args.password,
+            password=password,
             role=args.role,
         )
         output = json.dumps({

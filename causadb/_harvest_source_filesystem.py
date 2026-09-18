@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import stat
 from typing import Optional
 
 from causadb._harvest_source import HarvestSource
@@ -197,13 +198,38 @@ class FilesystemSource(HarvestSource):
         self._prev_snapshot = post_snap
         return post_hash
 
+    def _is_escaped(self, path: str) -> bool:
+        """True si ``path`` escapa de ``project_root`` (Fase 4 C-05).
+
+        lstat primero; si es link → realpath, si no → abspath; compara
+        con commonpath normalizado. Links internos → False (OK).
+        Forward-only: solo skipea, sin purga histórica.
+        """
+        try:
+            lst = os.lstat(path)
+        except OSError:
+            return True
+        if stat.S_ISLNK(lst.st_mode):
+            resolved = os.path.realpath(path)
+        else:
+            resolved = os.path.abspath(path)
+        root = os.path.abspath(self.project_root)
+        try:
+            return os.path.commonpath([root, resolved]) != root
+        except ValueError:
+            return True
+
     def _walk(self, prev_files, current_files):
         for dirpath, dirnames, filenames in os.walk(self.project_root):
-            dirnames[:] = [
-                d
-                for d in dirnames
-                if not d.startswith(".") and d not in self._excluded_dirs
-            ]
+            # Poda: excluidos históricos + links externos (no descender).
+            kept = []
+            for d in dirnames:
+                if d.startswith(".") or d in self._excluded_dirs:
+                    continue
+                if self._is_escaped(os.path.join(dirpath, d)):
+                    continue
+                kept.append(d)
+            dirnames[:] = kept
 
             for fname in filenames:
                 # Fase 1 DENY_BLOBS: .env/.env.local emiten metadata-only
@@ -216,9 +242,15 @@ class FilesystemSource(HarvestSource):
                 fpath = os.path.join(dirpath, fname)
                 relpath = os.path.relpath(fpath, self.project_root)
 
+                # C-05: skip archivos que escapan + skip no-regulares.
+                # Links internos OK (stat sigue el link al target regular).
+                if self._is_escaped(fpath):
+                    continue
                 try:
                     st = os.stat(fpath)
                 except OSError:
+                    continue
+                if not stat.S_ISREG(st.st_mode):
                     continue
 
                 mtime = int(st.st_mtime)

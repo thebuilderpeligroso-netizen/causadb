@@ -21,9 +21,20 @@ Algorithm (from ``CAUSADB_ROADMAP_FASE12_PLAN.md`` F.12.5, lines 379-387):
 Artículo V (Fall-Closed): an event without ``post_snapshot`` raises
 ``BisectError`` explicitly — no silent skip that could return a wrong
 answer.
+
+Trust model (``shell=True``): *test_cmd* is executed via
+``subprocess.run(..., shell=True)`` with the operator's privileges — it is
+trusted input. This function is deliberately NON-interactive (no prompt).
+The interactive confirmation lives ONLY in the CLI/TTY layer
+(``causadb.cli._cmd_bisect._confirm_shell_trust``), which warns the
+operator before running an arbitrary shell command. Callers of ``bisect()``
+programmatically are responsible for trusting *test_cmd*.
 """
 
+import os
+import shutil
 import subprocess
+import tempfile
 from typing import Optional, Dict, Any
 
 from causadb._ledger_reader import LedgerReader
@@ -82,29 +93,60 @@ def bisect(test_cmd: str, ledger_path: str, watch_dir: str) -> Optional[Dict[str
     if not snap_events:
         return None
 
-    lo, hi = 0, len(snap_events) - 1
-    first_bad = None
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        ev = snap_events[mid]
-        WorkspaceSnapshot.restore(ev.post_snapshot, store, watch_dir)
-        proc = subprocess.run(test_cmd, shell=True, cwd=watch_dir)
-        if proc.returncode == 0:
-            lo = mid + 1
-        else:
-            first_bad = ev
-            hi = mid - 1
+    # Snapshot inicial + backup a temp FUERA del workspace (sin papelera
+    # persistente ni flags CLI). Permite dejar el workspace inicial si el
+    # test explota a mitad (try/finally).
+    initial_snap = WorkspaceSnapshot.take(watch_dir)
+    initial_hash = WorkspaceSnapshot.store(initial_snap, store, root_dir=watch_dir)
+    backup_dir = tempfile.mkdtemp(prefix="causadb-bisect-")
+    try:
+        try:
+            for dirpath, dirnames, filenames in os.walk(watch_dir):
+                dirnames[:] = [d for d in dirnames if d != ".causadb"]
+                for fname in filenames:
+                    src = os.path.join(dirpath, fname)
+                    rel = os.path.relpath(src, watch_dir)
+                    dst = os.path.join(backup_dir, rel)
+                    os.makedirs(os.path.dirname(dst) or backup_dir, exist_ok=True)
+                    try:
+                        shutil.copy2(src, dst)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+        try:
+            lo, hi = 0, len(snap_events) - 1
+            first_bad = None
+            while lo <= hi:
+                mid = (lo + hi) // 2
+                ev = snap_events[mid]
+                WorkspaceSnapshot.restore(ev.post_snapshot, store, watch_dir, delete_extra=True)
+                proc = subprocess.run(test_cmd, shell=True, cwd=watch_dir)
+                if proc.returncode == 0:
+                    lo = mid + 1
+                else:
+                    first_bad = ev
+                    hi = mid - 1
 
-    if first_bad is None:
-        return None
+            if first_bad is None:
+                WorkspaceSnapshot.restore(initial_hash, store, watch_dir, delete_extra=True)
+                return None
 
-    WorkspaceSnapshot.restore(first_bad.post_snapshot, store, watch_dir)
+            WorkspaceSnapshot.restore(first_bad.post_snapshot, store, watch_dir, delete_extra=True)
 
-    payload = dict(first_bad.payload) if first_bad.payload else {}
-    return {
-        "event_id": first_bad.event_id,
-        "post_snapshot": first_bad.post_snapshot,
-        "prompt": payload.get("prompt"),
-        "reasoning": payload.get("reasoning"),
-        "agent": first_bad.source,
-    }
+            payload = dict(first_bad.payload) if first_bad.payload else {}
+            return {
+                "event_id": first_bad.event_id,
+                "post_snapshot": first_bad.post_snapshot,
+                "prompt": payload.get("prompt"),
+                "reasoning": payload.get("reasoning"),
+                "agent": first_bad.source,
+            }
+        except Exception:
+            try:
+                WorkspaceSnapshot.restore(initial_hash, store, watch_dir, delete_extra=True)
+            except Exception:
+                pass
+            raise
+    finally:
+        shutil.rmtree(backup_dir, ignore_errors=True)

@@ -39,8 +39,6 @@ __causadb_ctx_id={ctx_id}
 __causadb_prev_prompt="${{PROMPT_COMMAND:-}}"
 
 __causadb_hook_log() {{
-    # Run previous PROMPT_COMMAND first (if any)
-    [ -z "$__causadb_prev_prompt" ] || eval "$__causadb_prev_prompt"
     [ -n "$__causadb_saved_cmd" ] || return
     local ec=$?
     local cmd_b64="$(printf '%s' "$__causadb_saved_cmd" | base64 -w0)"
@@ -50,7 +48,20 @@ __causadb_hook_log() {{
         "$ec" >> "$__causadb_queue"
 }}
 trap '[[ $BASH_COMMAND != __causadb_hook_log* ]] && __causadb_saved_cmd=$BASH_COMMAND' DEBUG
-PROMPT_COMMAND='__causadb_hook_log'
+
+# Compose PROMPT_COMMAND with the previous one WITHOUT eval (avoids
+# double-eval of $(...) / quotes; keeps starship/direnv intact).
+# bash >= 5.1: single-element array -> each entry runs as its own command.
+# Older bash: fallback to ';' concatenation.
+if [[ -n "$__causadb_prev_prompt" ]]; then
+    if (( BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 1) )); then
+        PROMPT_COMMAND=( "$__causadb_prev_prompt" __causadb_hook_log )
+    else
+        PROMPT_COMMAND="$__causadb_prev_prompt; __causadb_hook_log"
+    fi
+else
+    PROMPT_COMMAND='__causadb_hook_log'
+fi
 """
 
 
@@ -77,6 +88,14 @@ def install(ctx_id: str = "shell") -> bool:
         )
 
     os.makedirs(_hook_dir(), exist_ok=True)
+    os.chmod(_hook_dir(), 0o700)
+
+    # Pre-create the queue file with restrictive perms (0o600) so the hook
+    # never depends on umask. os.open mode is subject to umask, so chmod
+    # afterwards to guarantee 0600 regardless of the caller's umask.
+    fd = os.open(_queue_file(), os.O_CREAT | os.O_WRONLY, 0o600)
+    os.close(fd)
+    os.chmod(_queue_file(), 0o600)
 
     # Escape ctx_id with json.dumps to prevent shell injection in the template
     safe_ctx = json.dumps(ctx_id)

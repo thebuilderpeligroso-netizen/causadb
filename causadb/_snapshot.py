@@ -23,6 +23,7 @@ If ``pathspec`` is not installed the ``.gitignore`` is silently ignored.
 import base64
 import hashlib
 import os
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -153,6 +154,50 @@ class WorkspaceSnapshot:
         with open(abs_path, "rb") as f:
             return f.read()
 
+    _WINDOWS_DRIVE_RE = re.compile(r"^[a-zA-Z]:")
+
+    @classmethod
+    def _safe_abs(cls, target_dir: str, rel_path: str) -> str:
+        """Validar *rel_path* y devolver el abspath seguro dentro de *target_dir*.
+
+        Reglas (Fase 3): normpath primero (``a/../b`` pasa como ``b``);
+        absolutas POSIX/Windows, ``~`` y traversals ``..`` → ValueError;
+        symlinks que escapan (realpath+commonpath) → ValueError.
+        No toca disco (solo realpath, que no crea nada).
+        """
+        if not isinstance(rel_path, str) or rel_path == "":
+            raise ValueError(f"snapshot path inválido (vacío): {rel_path!r}")
+        unified = rel_path.replace("\\", "/")
+        if unified.startswith("~"):
+            raise ValueError(f"snapshot path con ~ rechazado: {rel_path!r}")
+        if os.path.isabs(rel_path) or os.path.isabs(unified) or unified.startswith("/"):
+            raise ValueError(f"snapshot path absoluto rechazado: {rel_path!r}")
+        if cls._WINDOWS_DRIVE_RE.match(unified):
+            raise ValueError(f"snapshot path Windows rechazado: {rel_path!r}")
+        if unified.startswith("\\\\") or unified.startswith("//"):
+            raise ValueError(f"snapshot path UNC/absoluto rechazado: {rel_path!r}")
+        normalized = os.path.normpath(unified)
+        if normalized in (".", ""):
+            raise ValueError(f"snapshot path inválido: {rel_path!r}")
+        if normalized == ".." or normalized.startswith("../"):
+            raise ValueError(f"snapshot path traversal rechazado (.. escapa): {rel_path!r}")
+        if os.path.isabs(normalized):
+            raise ValueError(f"snapshot path absoluto rechazado: {rel_path!r}")
+        if cls._WINDOWS_DRIVE_RE.match(normalized):
+            raise ValueError(f"snapshot path Windows rechazado: {rel_path!r}")
+        base_real = os.path.realpath(target_dir)
+        candidate = os.path.join(base_real, normalized)
+        try:
+            candidate_real = os.path.realpath(candidate)
+            common = os.path.commonpath([base_real, candidate_real])
+        except ValueError:
+            raise ValueError(f"snapshot path escapa workspace: {rel_path!r}")
+        if common != base_real:
+            raise ValueError(
+                f"snapshot path escapa workspace (symlink/traversal): {rel_path!r}"
+            )
+        return os.path.join(target_dir, normalized)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -254,44 +299,54 @@ class WorkspaceSnapshot:
 
     @classmethod
     def restore(cls, snapshot_hash: str, blob_store: BlobStore,
-                target_dir: str) -> dict:
+                target_dir: str, delete_extra: bool = False) -> dict:
         """Restore the workspace at *target_dir* to the snapshot state.
 
         Files present in the snapshot are written back from their content
-        blobs; files NOT in the snapshot but present in *target_dir* are
-        removed. Returns the snapshot dict that was restored.
+        blobs. Files NOT in the snapshot but present in *target_dir* are
+        removed ONLY when *delete_extra* is True (por defecto NO borra).
+        Cada path del snapshot se valida con realpath+commonpath antes de
+        tocar disco; snapshots viejos con absolutas → ValueError claro.
+        Returns the snapshot dict that was restored.
         """
         snapshot = blob_store.get(snapshot_hash)
+        snap_dict = snapshot.get("files", {})
+
+        # Validar TODO antes de tocar disco (../ y absolutas no crean/borran nada).
+        for rel_path in snap_dict.keys():
+            cls._safe_abs(target_dir, rel_path)
+
         os.makedirs(target_dir, exist_ok=True)
 
-        snap_files = set(snapshot.get("files", {}).keys())
+        snap_files = set(snap_dict.keys())
 
-        # Remove files in target_dir that are not in the snapshot.
-        for dirpath, dirnames, filenames in os.walk(target_dir, topdown=False):
-            dirnames[:] = [
-                d for d in dirnames if not cls._is_excluded_component(d)
-            ]
-            for fname in filenames:
-                if cls._is_env_file(fname):
-                    continue
-                abs_path = os.path.join(dirpath, fname)
-                rel_path = os.path.relpath(abs_path, target_dir).replace("\\", "/")
-                if rel_path not in snap_files:
-                    try:
-                        os.remove(abs_path)
-                    except OSError:
-                        pass
+        if delete_extra:
+            # Remove files in target_dir that are not in the snapshot.
+            for dirpath, dirnames, filenames in os.walk(target_dir, topdown=False):
+                dirnames[:] = [
+                    d for d in dirnames if not cls._is_excluded_component(d)
+                ]
+                for fname in filenames:
+                    if cls._is_env_file(fname):
+                        continue
+                    abs_path = os.path.join(dirpath, fname)
+                    rel_path = os.path.relpath(abs_path, target_dir).replace("\\", "/")
+                    if rel_path not in snap_files:
+                        try:
+                            os.remove(abs_path)
+                        except OSError:
+                            pass
 
         # Write back each file from its content blob.
         blob_refs = snapshot.get("blob_refs", {})
-        for rel_path, entry in snapshot.get("files", {}).items():
+        for rel_path, entry in snap_dict.items():
             file_hash = entry["hash"]
             blob_sha = blob_refs.get(file_hash)
             if blob_sha is None:
                 continue
             content_blob = blob_store.get(blob_sha)
             content = base64.b64decode(content_blob["content_b64"])
-            abs_path = os.path.join(target_dir, rel_path)
+            abs_path = cls._safe_abs(target_dir, rel_path)
             parent = os.path.dirname(abs_path)
             if parent:
                 os.makedirs(parent, exist_ok=True)

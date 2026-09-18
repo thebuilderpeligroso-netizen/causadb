@@ -386,9 +386,9 @@ def test_anti_teatro_bisect_skips_restore(tmp_path):
     # --- Count restore calls for the REAL implementation ---
     real_calls = [0]
 
-    def counting_real(snapshot_hash, blob_store, target_dir):
+    def counting_real(snapshot_hash, blob_store, target_dir, *a, **k):
         real_calls[0] += 1
-        return original_restore(snapshot_hash, blob_store, target_dir)
+        return original_restore(snapshot_hash, blob_store, target_dir, *a, **k)
 
     WorkspaceSnapshot.restore = staticmethod(counting_real)
     try:
@@ -451,9 +451,9 @@ def test_anti_teatro_bisect_skips_restore(tmp_path):
         # Count restore calls for the MUTATED implementation.
         mut_calls = [0]
 
-        def counting_mut(snapshot_hash, blob_store, target_dir):
+        def counting_mut(snapshot_hash, blob_store, target_dir, *a, **k):
             mut_calls[0] += 1
-            return original_restore(snapshot_hash, blob_store, target_dir)
+            return original_restore(snapshot_hash, blob_store, target_dir, *a, **k)
 
         WorkspaceSnapshot.restore = staticmethod(counting_mut)
         try:
@@ -545,3 +545,52 @@ def test_bisect_raises_on_no_snapshot(tmp_path):
     assert "snapshot" in str(exc_info.value).lower(), (
         f"BisectError message must mention 'snapshot', got: {exc_info.value}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 8 (ADDED) — Confirmación SOLO en capa CLI/TTY (security hardening)
+# ---------------------------------------------------------------------------
+
+class TestBisectCLIConfirmation:
+    """La confirmación de `bisect --test` vive SOLO en la capa CLI/TTY.
+
+    `bisect()` (la función) sigue NO-interactiva. `shell=True` se mantiene
+    (el test_cmd se ejecuta con confianza total). La capa CLI pide
+    confirmación únicamente cuando stdin es un TTY; en modo no-interactivo
+    (CI/scripts) procede sin preguntar. NO rompe test_bisect.py (los tests
+    de la función `bisect()` no tocan la capa CLI).
+    """
+
+    def test_confirm_shell_trust_non_interactive_proceeds(self, monkeypatch):
+        """stdin NO es TTY → procede sin confirmación (no bloquea)."""
+        from causadb.cli import _cmd_bisect
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        assert _cmd_bisect._confirm_shell_trust("echo hi") is True
+
+    def test_confirm_shell_trust_declines_on_tty(self, monkeypatch):
+        """stdin es TTY y el usuario responde 'n' → aborta (False)."""
+        from causadb.cli import _cmd_bisect
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a, **k: "n")
+        assert _cmd_bisect._confirm_shell_trust("echo hi") is False
+
+    def test_confirm_shell_trust_confirms_on_tty(self, monkeypatch):
+        """stdin es TTY y el usuario responde 'y' → procede (True)."""
+        from causadb.cli import _cmd_bisect
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda *a, **k: "y")
+        assert _cmd_bisect._confirm_shell_trust("echo hi") is True
+
+    def test_cmd_bisect_aborts_when_user_declines(self, monkeypatch):
+        """Si la confirmación devuelve False, cmd_bisect aborta (exit 1)
+        sin invocar `bisect()`."""
+        from causadb.cli import _cmd_bisect
+        from types import SimpleNamespace
+        monkeypatch.setattr(_cmd_bisect, "_confirm_shell_trust", lambda cmd: False)
+        called = []
+        monkeypatch.setattr(_cmd_bisect, "bisect", lambda *a, **k: called.append(a))
+        args = SimpleNamespace(test="echo hi", ledger=None)
+        rc, out = _cmd_bisect.cmd_bisect(args)
+        assert rc == 1, f"expected abort exit 1, got {rc}"
+        assert "abort" in out.lower(), f"expected abort message, got {out!r}"
+        assert called == [], "bisect() must NOT be invoked when user declines"

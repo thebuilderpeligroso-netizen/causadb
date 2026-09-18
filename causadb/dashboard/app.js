@@ -78,6 +78,25 @@
     on ? show(emptyState) : hide(emptyState);
   }
 
+  // ── XSS-safe helpers (Fase 3: sin innerHTML con datos del ledger) ──
+  // Único punto para texto: todo dato del ledger va a textContent.
+  function safeSet(el, text) {
+    if (!el) return el;
+    el.textContent = (text == null ? '' : String(text));
+    return el;
+  }
+  function safeEl(tag, text, className) {
+    var e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text != null) e.textContent = String(text);
+    return e;
+  }
+  function clearEl(el) {
+    if (!el) return el;
+    while (el.firstChild) el.removeChild(el.firstChild);
+    return el;
+  }
+
   // ── Colour map ───────────────────────────────────────────────
   const TYPE_COLORS = {
     FILE_MODIFIED:       '#58a6ff',
@@ -210,8 +229,17 @@
     }
   }
 
+  function scoreRow(label, valueText) {
+    var row = document.createElement('div');
+    row.className = 'score-detail-row';
+    row.appendChild(safeEl('span', label));
+    var v = safeEl('span', valueText, 'val');
+    row.appendChild(v);
+    return row;
+  }
+
   function showScoreDetail(data) {
-    scoreDetailNumbers.innerHTML = '';
+    clearEl(scoreDetailNumbers);
 
     var w = data.weights_used || {};
     var weights_text = 'Churn: ' + w.churn + ' | Waste: ' + w.waste + ' | Survival: ' + w.survival;
@@ -221,54 +249,83 @@
       corr = 'timestamp_proximity ⚠️ imprecisa';
     }
 
-    scoreDetailNumbers.innerHTML =
-      '<div class="score-detail-section">' +
-        '<h3>Overall</h3>' +
-        '<div class="score-detail-row"><span>Score</span><span class="val">' + Math.round(data.overall_score) + '/100</span></div>' +
-        '<div class="score-detail-row"><span>Churn</span><span class="val">' + Math.round(data.churn_score) + '/100</span></div>' +
-        '<div class="score-detail-row"><span>Waste</span><span class="val">' + Math.round(data.waste_score) + '/100</span></div>' +
-        '<div class="score-detail-row"><span>Survival</span><span class="val">' + Math.round(data.survival_score) + '/100</span></div>' +
-      '</div>' +
-      '<div class="score-detail-section">' +
-        '<h3>Config</h3>' +
-        '<div class="score-detail-row"><span>Weights</span><span class="val">' + weights_text + '</span></div>' +
-        '<div class="score-detail-row"><span>Method</span><span class="val">' + corr + '</span></div>' +
-      '</div>';
+    var sec1 = document.createElement('div');
+    sec1.className = 'score-detail-section';
+    sec1.appendChild(safeEl('h3', 'Overall'));
+    sec1.appendChild(scoreRow('Score', Math.round(data.overall_score) + '/100'));
+    sec1.appendChild(scoreRow('Churn', Math.round(data.churn_score) + '/100'));
+    sec1.appendChild(scoreRow('Waste', Math.round(data.waste_score) + '/100'));
+    sec1.appendChild(scoreRow('Survival', Math.round(data.survival_score) + '/100'));
+    scoreDetailNumbers.appendChild(sec1);
 
-    // Warnings
+    var sec2 = document.createElement('div');
+    sec2.className = 'score-detail-section';
+    sec2.appendChild(safeEl('h3', 'Config'));
+    sec2.appendChild(scoreRow('Weights', weights_text));
+    sec2.appendChild(scoreRow('Method', corr));
+    scoreDetailNumbers.appendChild(sec2);
+
+    // Warnings (solo texto vía safeSet)
     var warnings = (data.warnings || []).filter(function(w) {
-      return !w.includes('no_snapshots_for');
+      return !String(w.includes ? w : '').includes('no_snapshots_for');
     });
-    if ((data.warnings || []).some(function(w) { return w.includes('no_snapshots'); })) {
+    if ((data.warnings || []).some(function(w) { return String(w).includes('no_snapshots'); })) {
       warnings.push('Sin snapshots en sesiones de test (revive-test, CRI-v2, opencode-config)');
     }
     if (warnings.length > 0) {
       var warnTexts = warnings.map(function(wn) {
-        if (wn.label) return wn.label;
-        if (wn.includes('survival_defaulted')) return 'Survival: sin Git, asumimos 100%';
-        return wn;
+        if (wn && wn.label) return wn.label;
+        if (String(wn).includes('survival_defaulted')) return 'Survival: sin Git, asumimos 100%';
+        return String(wn);
       });
-      scoreDetailWarnings.innerHTML = '<strong>⚠️ Advertencias</strong><ul>' + warnTexts.map(function(w) { return '<li>' + w + '</li>'; }).join('') + '</ul>';
+      clearEl(scoreDetailWarnings);
+      scoreDetailWarnings.appendChild(safeEl('strong', '⚠️ Advertencias'));
+      var ul = document.createElement('ul');
+      warnTexts.forEach(function(wt) {
+        ul.appendChild(safeEl('li', wt));
+      });
+      scoreDetailWarnings.appendChild(ul);
       show(scoreDetailWarnings);
     } else {
       hide(scoreDetailWarnings);
     }
 
-    // Per-session breakdown
+    // Per-session breakdown (ctx como texto)
     var perS = data.per_session || {};
     var sessions = Object.keys(perS);
     if (sessions.length > 0) {
-      var rows = sessions.map(function(ctx) {
-        var s = perS[ctx];
-        return '<tr><td>' + (ctx.length > 32 ? ctx.substring(0,30) + '...' : ctx) + '</td>' +
-          '<td style="text-align:right">' + Math.round(s.overall_score) + '</td>' +
-          '<td style="text-align:right">' + Math.round(s.churn_ratio * 100) + '%</td>' +
-          '<td style="text-align:right">' + Math.round(s.waste_ratio * 100) + '%</td>' +
-          '<td style="text-align:right">' + Math.round(s.survival_ratio * 100) + '%</td></tr>';
+      clearEl(scoreDetailSessions);
+      scoreDetailSessions.appendChild(safeEl('h4', 'Per Session'));
+      var table = document.createElement('table');
+      var thead = document.createElement('thead');
+      var hr = document.createElement('tr');
+      ['Session', 'Overall', 'Churn', 'Waste', 'Surv.'].forEach(function(h) {
+        hr.appendChild(safeEl('th', h));
       });
-      scoreDetailSessions.innerHTML = '<h4>Per Session</h4><table>' +
-          '<thead><tr><th>Session</th><th>Overall</th><th>Churn</th><th>Waste</th><th>Surv.</th></tr></thead>' +
-          '<tbody>' + rows.join('') + '</tbody></table>';
+      thead.appendChild(hr);
+      table.appendChild(thead);
+      var tbody = document.createElement('tbody');
+      sessions.forEach(function(ctx) {
+        var s = perS[ctx] || {};
+        var tr = document.createElement('tr');
+        var shortCtx = (ctx.length > 32 ? ctx.substring(0, 30) + '...' : ctx);
+        tr.appendChild(safeEl('td', shortCtx));
+        var tdO = safeEl('td', String(Math.round(s.overall_score || 0)));
+        tdO.style.textAlign = 'right';
+        tr.appendChild(tdO);
+        var tdC = safeEl('td', Math.round((s.churn_ratio || 0) * 100) + '%');
+        tdC.style.textAlign = 'right';
+        tr.appendChild(tdC);
+        var tdW = safeEl('td', Math.round((s.waste_ratio || 0) * 100) + '%');
+        tdW.style.textAlign = 'right';
+        tr.appendChild(tdW);
+        var tdS = safeEl('td', Math.round((s.survival_ratio || 0) * 100) + '%');
+        tdS.style.textAlign = 'right';
+        tr.appendChild(tdS);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      scoreDetailSessions.appendChild(table);
       show(scoreDetailSessions);
     } else {
       hide(scoreDetailSessions);
@@ -345,13 +402,21 @@
       const resp = await fetch('/api/crashes');
       if (!resp.ok) return;
       const crashes = await resp.json();
-      crashList.innerHTML = crashes.map(function (c) {
-        return '<div class="crash-item">' +
-          '<strong>' + c.exception_type + '</strong> (' + c.occurrences + 'x)' +
-          '<p><code>' + (c.exception_msg || '') + '</code></p>' +
-          '<small>' + c.timestamp + ' &mdash; ' + c.os + '</small>' +
-          '</div>';
-      }).join('');
+      clearEl(crashList);
+      crashes.forEach(function (c) {
+        var item = document.createElement('div');
+        item.className = 'crash-item';
+        var head = document.createElement('div');
+        head.appendChild(safeEl('strong', c.exception_type));
+        head.appendChild(document.createTextNode(' (' + c.occurrences + 'x)'));
+        item.appendChild(head);
+        var p = document.createElement('p');
+        p.appendChild(safeEl('code', c.exception_msg || ''));
+        item.appendChild(p);
+        safeSet(item.appendChild(document.createElement('small')),
+          (c.timestamp || '') + ' — ' + (c.os || ''));
+        crashList.appendChild(item);
+      });
     } catch (e) {}
   }
 
@@ -573,12 +638,15 @@
     var h = humanizeEvent(event);
     var friendlyView = document.createElement('div');
     friendlyView.className = 'event-friendly-view';
-    friendlyView.innerHTML =
-      '<div class="efv-icon">' + h.icon + '</div>' +
-      '<div class="efv-title">' + h.title + '</div>' +
-      '<div class="efv-meta">' + fmtTimestamp(event.timestamp) + ' · ' + (event.event_type || 'UNKNOWN').replace('_', ' ') + ' · ' + (event.source || '') + '</div>' +
-      '<div class="efv-desc">' + h.desc + '</div>' +
-      (event.event_id ? '<div class="efv-id">ID: ' + event.event_id + '</div>' : '');
+    friendlyView.appendChild(safeEl('div', h.icon, 'efv-icon'));
+    friendlyView.appendChild(safeEl('div', h.title, 'efv-title'));
+    friendlyView.appendChild(safeEl('div',
+      fmtTimestamp(event.timestamp) + ' · ' + (event.event_type || 'UNKNOWN').replace('_', ' ') + ' · ' + (event.source || ''),
+      'efv-meta'));
+    friendlyView.appendChild(safeEl('div', h.desc, 'efv-desc'));
+    if (event.event_id) {
+      friendlyView.appendChild(safeEl('div', 'ID: ' + event.event_id, 'efv-id'));
+    }
 
     modalJson.textContent = JSON.stringify(event, null, 2);
     modalJson.parentNode.insertBefore(friendlyView, modalJson);
@@ -970,14 +1038,21 @@
       var resp = await fetch('/api/workspaces');
       if (!resp.ok) return;
       var data = await resp.json();
+      clearEl(workspaceSelect);
       if (!data.workspaces || data.workspaces.length === 0) {
-        workspaceSelect.innerHTML = '<option value="">Sin proyectos</option>';
+        var emptyOpt = document.createElement('option');
+        safeSet(emptyOpt, 'Sin proyectos');
+        emptyOpt.value = '';
+        workspaceSelect.appendChild(emptyOpt);
         return;
       }
-      workspaceSelect.innerHTML = data.workspaces.map(function(ws) {
-        var selected = ws.is_active ? ' selected' : '';
-        return '<option value="' + ws.ledger_path + '"' + selected + '>' + ws.name + '</option>';
-      }).join('');
+      data.workspaces.forEach(function(ws) {
+        var opt = document.createElement('option');
+        opt.value = ws.ledger_path || '';
+        safeSet(opt, ws.name || '');
+        if (ws.is_active) opt.selected = true;
+        workspaceSelect.appendChild(opt);
+      });
     } catch {}
   }
 

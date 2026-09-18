@@ -99,7 +99,10 @@ def ensure_shared_docs(ledger_path: str) -> None:
 
 
 def read_shared_doc(ledger_path: str, name: str) -> dict:
-    """Lee documento compartido. Si no existe, retorna plantilla vacía."""
+    """Lee documento compartido. Si no existe, retorna plantilla vacía.
+
+    Archivo corrupto (JSON inválido o version no-int) -> ValueError.
+    """
     if name not in ALLOWED_NAMES:
         raise ValueError(f"Nombre no permitido: {name}. Permitidos: {ALLOWED_NAMES}")
     path = _doc_path(ledger_path, name)
@@ -107,13 +110,25 @@ def read_shared_doc(ledger_path: str, name: str) -> dict:
         return get_template(name)
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return get_template(name)
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Documento corrupto: {path}: {e}") from e
+    v = data.get("version", 0)
+    if not isinstance(v, int) or isinstance(v, bool):
+        raise ValueError(f"Documento corrupto: version debe ser int en {path}")
+    return data
 
 
-def write_shared_doc(ledger_path: str, name: str, content: dict) -> None:
-    """Escribe documento (atomic write + fsync). Valida nombre y estructura mínima."""
+def write_shared_doc(
+    ledger_path: str, name: str, content: dict, base_version: int | None = None
+) -> None:
+    """Escribe documento (atomic write + fsync). Valida nombre y estructura mínima.
+
+    Versionado optimista: docs viejos sin version = 0; base_version=None
+    acepta 1 write para migrar (compat con callers viejos). Si base_version
+    se provee y != current -> ValueError 409 stale. Incremento atómico
+    bajo _atomic_write existente.
+    """
     if name not in ALLOWED_NAMES:
         raise ValueError(f"Nombre no permitido: {name}. Permitidos: {ALLOWED_NAMES}")
     # Validación mínima de estructura
@@ -121,8 +136,28 @@ def write_shared_doc(ledger_path: str, name: str, content: dict) -> None:
         raise ValueError("Campo 'tipo' obligatorio y debe coincidir con el nombre")
     if content.get("tipo") != name:
         raise ValueError("Campo 'tipo' obligatorio y debe coincidir con el nombre")
+    path = _doc_path(ledger_path, name)
+    current = 0
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                stored = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Documento corrupto: {path}: {e}") from e
+        current = stored.get("version", 0)
+        if not isinstance(current, int) or isinstance(current, bool):
+            raise ValueError(f"Documento corrupto: version debe ser int en {path}")
+    if base_version is not None:
+        if not isinstance(base_version, int) or isinstance(base_version, bool):
+            raise ValueError("base_version debe ser int")
+        if base_version != current:
+            raise ValueError(
+                f"409 Conflict: stale write en {name}: "
+                f"base_version={base_version} != current={current}"
+            )
+    content["version"] = current + 1
     content["actualizado_en"] = _now_iso()
-    _atomic_write(_doc_path(ledger_path, name), content)
+    _atomic_write(path, content)
 
 
 def _atomic_write(path: Path, data: dict) -> None:

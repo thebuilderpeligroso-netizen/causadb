@@ -36,13 +36,38 @@ def _detect_codebase_memory() -> bool:
         return False
 
 
+def _is_within(path: str, base: str) -> bool:
+    """True si *path* (resuelto) está dentro de *base* (resuelto)."""
+    try:
+        return os.path.commonpath(
+            [os.path.abspath(path), os.path.abspath(base)]
+        ) == os.path.abspath(base)
+    except ValueError:
+        # Distintos drives / paths sin commonpath → fuera.
+        return False
+
+
 def _iter_py_files(project_path: str):
-    """Itera los archivos .py del proyecto, excluyendo dirs de ruido."""
+    """Itera los archivos .py del proyecto, excluyendo dirs de ruido.
+
+    No sigue symlinks que apuntan FUERA del proyecto (symlink escape
+    prevention): un symlink cuyo target resuelto queda fuera de
+    ``project_path`` se omite. ``os.walk`` con ``followlinks=False``
+    (default) ya no desciende a dirs symlink; aquí además filtramos
+    archivos symlink externos.
+    """
+    project_path = os.path.abspath(project_path)
     for root, dirs, files in os.walk(project_path):
         dirs[:] = [d for d in dirs if d not in _EXCLUDED_DIRS]
         for f in files:
-            if f.endswith(".py"):
-                yield os.path.join(root, f)
+            if not f.endswith(".py"):
+                continue
+            abs_path = os.path.join(root, f)
+            if os.path.islink(abs_path):
+                real = os.path.realpath(abs_path)
+                if not _is_within(real, project_path):
+                    continue
+            yield abs_path
 
 
 def _module_path_for(file_path: str, project_path: str) -> str:
@@ -82,8 +107,20 @@ def _extract_calls(tree) -> list:
     return calls
 
 
-def generate_codebase_snapshot(project_path: str, project_id: str | None = None) -> dict:
+def generate_codebase_snapshot(
+    project_path: str,
+    project_id: str | None = None,
+    max_files: int | None = 1000,
+    max_bytes: int | None = 50_000_000,
+) -> dict:
     """Genera un snapshot de arquitectura del proyecto.
+
+    Args:
+        project_path: ruta del proyecto a indexar.
+        project_id: id opcional del proyecto.
+        max_files: cap de archivos .py a indexar (default 1000).
+        max_bytes: cap de bytes totales leídos (default 50MB). Al excederlo
+            se corta la indexación.
 
     Returns:
         dict con ``project_id``, ``generated_at``, ``generator``, ``nodes``,
@@ -100,21 +137,29 @@ def generate_codebase_snapshot(project_path: str, project_id: str | None = None)
         edges = []
         module_to_file = {}
         file_imports = {}
+        total_bytes = 0
+        file_count = 0
 
         for file_path in _iter_py_files(project_path):
+            if max_files is not None and file_count >= max_files:
+                break
             rel = os.path.relpath(file_path, project_path).replace(os.sep, "/")
             module = _module_path_for(file_path, project_path)
-            module_to_file[module] = rel
             try:
                 with open(file_path, "r", encoding="utf-8", errors="replace") as f:
                     src = f.read()
+                total_bytes += len(src.encode("utf-8", errors="replace"))
+                if max_bytes is not None and total_bytes > max_bytes:
+                    break
                 tree = ast.parse(src)
                 imports = _extract_imports(tree)
                 calls = _extract_calls(tree)
             except Exception:
                 imports, calls = [], []
+            module_to_file[module] = rel
             file_imports[rel] = imports
             nodes.append({"id": rel, "type": "file", "imports": imports, "calls": calls})
+            file_count += 1
 
         # Resolver imports intra-paquete (lookup de dict, ~99.6% resuelven).
         for rel, imports in file_imports.items():

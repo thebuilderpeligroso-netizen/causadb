@@ -92,6 +92,20 @@ def test_detect_false_without_dir(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 1b. CAUSADB_CODEX_DIR pasa por normalize_store_path (hardening C-10)
+# ---------------------------------------------------------------------------
+
+def test_codex_dir_routes_through_normalize_store_path(tmp_path, monkeypatch):
+    """CAUSADB_CODEX_DIR se endurece: el env override se canonicaliza con
+    realpath+expanduser vía normalize_store_path (escape hatch, no confinado)."""
+    from causadb._harvest_source_codex import _derive_default_codex_dir
+    monkeypatch.setenv("CAUSADB_CODEX_DIR", "/tmp/../tmp/codex-dir")
+    assert _derive_default_codex_dir() == "/tmp/codex-dir", (
+        "CAUSADB_CODEX_DIR debe canonicalizarse (realpath)"
+    )
+
+
+# ---------------------------------------------------------------------------
 # 2. harvest de la fixture → eventos esperados
 # ---------------------------------------------------------------------------
 

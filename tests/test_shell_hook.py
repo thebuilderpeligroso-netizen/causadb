@@ -5,6 +5,7 @@ Artículo III: Test-first. Artículo IX: Anti-teatro.
 
 import json
 import os
+import subprocess
 import tempfile
 
 import pytest
@@ -226,3 +227,48 @@ def test_anti_teatro_hook_invokes_causadb():
         content = f.read()
     assert "queue.jsonl" in content
     assert "echo" not in content.split("\n")[1]  # first non-shebang line
+
+
+# ---------------------------------------------------------------------------
+# PROMPT_COMMAND preservation (no double-eval) + queue permissions
+# ---------------------------------------------------------------------------
+
+
+def test_install_prev_prompt_runs_once_no_double_eval(fake_home, tmp_path):
+    """A non-trivial previous PROMPT_COMMAND (with $() and quotes) must be
+    preserved and run exactly once — no double-eval from the hook."""
+    install(ctx_id="test")
+    hook = _hook_script()
+
+    marker = tmp_path / "prompt_runs.txt"
+    # Non-trivial prev: command substitution + double quotes.
+    prev = f'echo "ran:$(date +%s)" >> "{marker}"'
+
+    script = f"""PROMPT_COMMAND={prev!r}
+source {hook!r}
+# bash >= 5.1 must compose PROMPT_COMMAND as an array (prev + hook) so each
+# entry runs as its own command — no eval, no double-eval.
+if (( BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 1) )); then
+    if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) != "declare -a"* ]]; then
+        echo "NOT_ARRAY"; exit 1
+    fi
+    for c in "${{PROMPT_COMMAND[@]}}"; do eval "$c"; done
+else
+    eval "$PROMPT_COMMAND"
+fi
+wc -l < "{marker}"
+"""
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.strip()
+    assert lines == "1", f"expected exactly 1 run, got {lines!r}"
+
+
+def test_install_queue_permissions(fake_home):
+    """Queue file must be pre-created with 0600 and dir with 0700."""
+    install(ctx_id="test")
+    assert os.path.exists(_queue_file())
+    qmode = os.stat(_queue_file()).st_mode & 0o777
+    assert qmode == 0o600, f"queue mode {oct(qmode)} != 0600"
+    dmode = os.stat(_hook_dir()).st_mode & 0o777
+    assert dmode == 0o700, f"dir mode {oct(dmode)} != 0700"

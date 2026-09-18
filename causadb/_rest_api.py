@@ -104,6 +104,65 @@ def set_active_ledger(path: str):
         pass
 
 
+def _parse_limit(raw, default=DEFAULT_QUERY_LIMIT, max_limit=MAX_QUERY_LIMIT):
+    """Normaliza un ``limit`` de listado (BIT-CHR.35 P3 anti-gigantismo).
+
+    - ``None`` / inválido → *default*.
+    - ``<= 0`` (0 o negativo) → *default* (``limit=0`` NO significa infinito).
+    - ``> max_limit`` → clamp a *max_limit*.
+
+    Returns:
+        int efectivo dentro de ``[default, max_limit]``.
+    """
+    if raw is None:
+        return default
+    try:
+        val = int(raw)
+    except (ValueError, TypeError):
+        return default
+    if val <= 0:
+        return default
+    return min(val, max_limit)
+
+
+def _parse_offset(raw, max_offset=MAX_QUERY_LIMIT):
+    """Normaliza un ``offset`` de listado.
+
+    - ``None`` / inválido / negativo → 0.
+    - ``> max_offset`` → clamp a *max_offset* (offset máximo acotado).
+
+    Returns:
+        int efectivo dentro de ``[0, max_offset]``.
+    """
+    if raw is None:
+        return 0
+    try:
+        val = int(raw)
+    except (ValueError, TypeError):
+        return 0
+    if val < 0:
+        return 0
+    return min(val, max_offset)
+
+
+def _build_auth_or_error():
+    """Construye un :class:`AuthManager` desde env/archivo (fail-closed).
+
+    Sin key configurada retorna ``(None, error_msg)`` — el caller debe
+    levantar (Art. IX: nada de clave de fábrica, nada de server sin auth).
+
+    Returns:
+        ``(auth_manager, None)`` o ``(None, error_msg)``.
+    """
+    from causadb._auth import AuthManager, load_rest_api_key, rest_auth_error_message
+    key = load_rest_api_key()
+    if not key:
+        return None, rest_auth_error_message()
+    am = AuthManager()
+    am.enable({key: "admin"})
+    return am, None
+
+
 class CausaDBAPIHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the CausaDB REST API.
 
@@ -154,7 +213,30 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
-    
+
+    def _redact_events(self, events):
+        """Redacta payloads en LECTURA (fail-closed hacia adelante).
+
+        Safety net para eventos legacy persistidos ANTES de la redacción
+        (forward-only: el ledger no se reescribe). El dashboard verá el
+        hash de campos sensibles (documentado). ``GET /api/auth/me`` queda
+        eximido — devuelve la propia api_key del usuario en claro.
+
+        Acepta tanto eventos planos (``{"payload": ...}``) como entradas
+        del índice (``{"event": {...}, "hash": ...}``).
+        """
+        from causadb._redactor import redact_payload
+        from causadb._config import CausaDBConfig
+        config = CausaDBConfig(ledger_path=self._ledger_path)
+        out = []
+        for ev in events:
+            ev = dict(ev)
+            target = ev.get("event") if isinstance(ev.get("event"), dict) else ev
+            if isinstance(target.get("payload"), dict):
+                target["payload"] = redact_payload(target["payload"], config)
+            out.append(ev)
+        return out
+
     def _check_auth(self, action: str) -> bool:
         """Check authentication and authorization for *action*.
 
@@ -696,20 +778,25 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_query(self, body):
+        body = body or {}
+        limit = _parse_limit(body.get("limit"))
         events = list(self._index.query(
             event_type=body.get("event_type"),
             ctx_id=body.get("ctx_id"),
             parent_event_id=body.get("parent_event_id"),
             source=body.get("source"),
+            limit=limit,
         ))
-        self._json_response(events)
+        self._json_response(self._redact_events(events))
 
     def _handle_export(self, body):
-        fmt = (body or {}).get("format", "json")
-        from_time = (body or {}).get("from")
-        to_time = (body or {}).get("to")
-        event_type = (body or {}).get("event_type")
-        text = (body or {}).get("q")
+        body = body or {}
+        fmt = body.get("format", "json")
+        from_time = body.get("from")
+        to_time = body.get("to")
+        event_type = body.get("event_type")
+        text = body.get("q")
+        limit = _parse_limit(body.get("limit"))
 
         results = query_events(
             self._ledger_path,
@@ -717,7 +804,9 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
             to_time=to_time,
             event_type=event_type,
             text=text,
+            limit=limit,
         )
+        results = self._redact_events(results)
 
         if fmt == "csv":
             output = io.StringIO()
@@ -737,13 +826,15 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
             self._json_response(results)
 
     def _handle_trace(self, body):
-        event_id = (body or {}).get("event_id")
+        body = body or {}
+        event_id = body.get("event_id")
         if not event_id:
             self._json_response({"error": "missing 'event_id' in body"}, 400)
             return
 
         # Find the target event in the index
-        all_events = list(self._index.query())
+        limit = _parse_limit(body.get("limit"))
+        all_events = list(self._index.query(limit=limit))
         target = None
         for entry in all_events:
             if entry["event"]["event_id"] == event_id:
@@ -783,10 +874,10 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
                     grandchildren.append(entry["event"])
 
         self._json_response({
-            "event": target,
-            "parents": parents,      # ordered root → direct parent
-            "children": children,     # direct children
-            "grandchildren": grandchildren,  # grandchildren (2nd level)
+            "event": self._redact_events([target])[0],
+            "parents": self._redact_events(parents),      # ordered root → direct parent
+            "children": self._redact_events(children),     # direct children
+            "grandchildren": self._redact_events(grandchildren),  # grandchildren (2nd level)
         })
 
     def _handle_get_query(self, params):
@@ -797,16 +888,10 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
         from_time = params.get("from", [None])[0]
         to_time = params.get("to", [None])[0]
         text = params.get("q", [None])[0]
-        raw_limit = params.get("limit", [None])[0]
-        if raw_limit is not None:
-            try:
-                limit_eff = min(int(raw_limit), MAX_QUERY_LIMIT)
-            except (ValueError, TypeError):
-                limit_eff = DEFAULT_QUERY_LIMIT
-        else:
-            # BIT-CHR.35 P3 — cap por defecto: una query GET sin filtros ya
-            # no devuelve el ledger completo (43K eventos / ~50MB JSON).
-            limit_eff = DEFAULT_QUERY_LIMIT
+        # BIT-CHR.35 P3 — cap por defecto: una query GET sin filtros ya
+        # no devuelve el ledger completo (43K eventos / ~50MB JSON).
+        # limit=0/-1 → default (no vacío, no infinito); >MAX → clamp.
+        limit_eff = _parse_limit(params.get("limit", [None])[0])
         results = query_events(
             self._ledger_path,
             event_type=event_type,
@@ -818,28 +903,24 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
             text=text,
             limit=limit_eff,
         )
-        self._json_response(results)
+        self._json_response(self._redact_events(results))
 
     def _handle_get_events(self, params):
-        """GET /api/events — list all events with optional limit/offset."""
-        try:
-            limit = int(params.get("limit", [0])[0])
-        except (ValueError, TypeError):
-            limit = 0
-        try:
-            offset = int(params.get("offset", [0])[0])
-        except (ValueError, TypeError):
-            offset = 0
+        """GET /api/events — list all events with optional limit/offset.
 
-        entries = self._index.query()
+        BIT-CHR.35 P3: limit default + clamp MAX + ``limit=0``→default
+        (NO infinito) + offset máximo acotado.
+        """
+        limit = _parse_limit(params.get("limit", [None])[0])
+        offset = _parse_offset(params.get("offset", [None])[0])
+
+        entries = self._index.query(limit=limit)
         events = [entry["event"] for entry in entries]
 
         if offset > 0:
             events = events[offset:]
-        if limit > 0:
-            events = events[:limit]
 
-        self._json_response(events)
+        self._json_response(self._redact_events(events))
 
     def _handle_check_update(self):
         from causadb._updater import check_update
@@ -1003,7 +1084,7 @@ class CausaDBAPIHandler(BaseHTTPRequestHandler):
             self.wfile.write(f.read())
 
 
-def serve(ledger_path: str, host: str = "127.0.0.1", port: int = 7457, auth_manager=None, user_store=None, on_server_created=None):
+def serve(ledger_path: str, host: str = "127.0.0.1", port: int = 7457, auth_manager=None, user_store=None, on_server_created=None, allow_unauthenticated_localhost: bool = False):
     """Start the REST API server. Blocks until interrupted.
 
     Args:
@@ -1011,7 +1092,9 @@ def serve(ledger_path: str, host: str = "127.0.0.1", port: int = 7457, auth_mana
         host: Bind address (default ``127.0.0.1``).
         port: TCP port (default ``7457``).
         auth_manager: Optional :class:`~causadb._auth.AuthManager` instance.
-            When ``None`` or disabled, all requests pass without auth.
+            When ``None`` and ``allow_unauthenticated_localhost`` is falsy,
+            se construye uno desde env/archivo o se levanta (fail-closed,
+            Art. IX) — el server NO arranca sin auth.
         user_store: Optional :class:`~causadb._user_store.UserStore` instance
             for persistent RBAC (#10).
         on_server_created: Optional callback ``f(server)`` invocado con la
@@ -1019,6 +1102,9 @@ def serve(ledger_path: str, host: str = "127.0.0.1", port: int = 7457, auth_mana
             crearla y ANTES de que el server empiece a atender
             (BIT-CHR.41: registrar el server + arrancar el
             daemon antes de bloquear).
+        allow_unauthenticated_localhost: Flag SOLO-TESTS. Si ``True`` y
+            ``auth_manager`` es ``None``, arranca sin auth (localhost).
+            Nunca usar en producción.
 
     Nota de diseño: ``serve_forever()`` corre en un thread worker y el
     thread principal espera con ``join``. Motivo: el handler de SIGTERM
@@ -1027,6 +1113,10 @@ def serve(ledger_path: str, host: str = "127.0.0.1", port: int = 7457, auth_mana
     ``serve_forever`` — si ambos fueran el principal, el handler se
     juntaría a sí mismo (deadlock) y ``os._exit(0)`` nunca correría.
     """
+    if auth_manager is None and not allow_unauthenticated_localhost:
+        auth_manager, auth_err = _build_auth_or_error()
+        if auth_err is not None:
+            raise RuntimeError(auth_err)
     server = HTTPServer(
         (host, port),
         lambda *args, **kwargs: CausaDBAPIHandler(
@@ -1047,22 +1137,32 @@ def serve(ledger_path: str, host: str = "127.0.0.1", port: int = 7457, auth_mana
         worker.join(timeout=5.0)
 
 
-def serve_in_thread(ledger_path: str, host: str = "127.0.0.1", port: int = 7457, auth_manager=None, user_store=None):
+def serve_in_thread(ledger_path: str, host: str = "127.0.0.1", port: int = 7457, auth_manager=None, user_store=None, allow_unauthenticated_localhost: bool = True):
     """Start the REST API server in a daemon thread. Returns the server.
+
+    Helper de tests: por defecto permite localhost sin auth
+    (``allow_unauthenticated_localhost=True``). Para probar el fail-closed
+    pasá ``allow_unauthenticated_localhost=False``.
 
     Args:
         ledger_path: Absolute path to the ledger file.
         host: Bind address (default ``127.0.0.1``).
         port: TCP port (default ``7457``).
         auth_manager: Optional :class:`~causadb._auth.AuthManager` instance.
-            When ``None`` or disabled, all requests pass without auth.
         user_store: Optional :class:`~causadb._user_store.UserStore` instance
             for persistent RBAC (#10).
+        allow_unauthenticated_localhost: Si ``False`` y ``auth_manager`` es
+            ``None``, construye auth desde env/archivo o levanta
+            (fail-closed, Art. IX).
 
     Returns:
         The :class:`http.server.HTTPServer` instance (already started).
     """
     from threading import Thread
+    if auth_manager is None and not allow_unauthenticated_localhost:
+        auth_manager, auth_err = _build_auth_or_error()
+        if auth_err is not None:
+            raise RuntimeError(auth_err)
     server = HTTPServer(
         (host, port),
         lambda *args, **kwargs: CausaDBAPIHandler(

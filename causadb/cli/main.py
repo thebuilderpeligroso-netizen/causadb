@@ -829,7 +829,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_user_add = p_user_sub.add_parser("add", help="Add a new user.")
     p_user_add.add_argument("--username", required=True, help="Username.")
-    p_user_add.add_argument("--password", required=True, help="Password.")
+    p_user_add.add_argument("--password", default=None, help="Password (or CAUSADB_USER_PASSWORD env / interactive prompt).")
     p_user_add.add_argument("--role", default="member",
                             choices=["admin", "member", "auditor"],
                             help="Role (default: member).")

@@ -43,14 +43,21 @@ from typing import Iterator, Optional
 
 from causadb._agent_transcript import agent_message_to_raw
 from causadb._harvest_source import HarvestSource
+from causadb._store_discovery import normalize_store_path
 
 
 def _derive_default_codex_dir() -> str:
-    """Directorio base de Codex: env override o ``~/.codex``."""
-    env_dir = os.environ.get("CAUSADB_CODEX_DIR")
-    if env_dir:
-        return env_dir
-    return os.path.join(os.path.expanduser("~"), ".codex")
+    """Directorio base de Codex: env override o ``~/.codex``.
+
+    Ruteado por ``normalize_store_path`` (hardening C-10): el env override
+    ``CAUSADB_CODEX_DIR`` se canonicaliza (realpath+expanduser) y queda
+    endurecido; sin config de agente → default ``~/.codex``.
+    """
+    return normalize_store_path(
+        "CAUSADB_CODEX_DIR",
+        None,
+        os.path.join(os.path.expanduser("~"), ".codex"),
+    )
 
 
 def _derive_sessions_dir(codex_dir: str) -> str:

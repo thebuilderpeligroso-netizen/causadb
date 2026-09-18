@@ -184,7 +184,7 @@ def test_replay_checkpoint_created_produces_checkpoint_state(ledger_path):
     engine = ReplayEngine(ledger_path)
     state = engine.reconstruct_state()
     assert state["checkpoints"] == [{"checkpoint_id": "cp-1", "timestamp": e2.timestamp, "source": "opencode:agent"}]
-    assert state.get("files_modified_count") == 1
+    assert state["checkpoint_data"]["files_modified_count"] == 1
 
 
 # --- F.3.5: TOOL_CALLED mejorado — arguments, result, duration_ms, error ---
