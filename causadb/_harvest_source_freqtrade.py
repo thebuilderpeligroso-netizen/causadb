@@ -42,16 +42,31 @@ Cursor: ``{"max_trade_id": int}`` — barrido secuencial por ``trades.id``
 
 Conexión: ``sqlite3.connect("file:...?mode=ro", uri=True)`` — read-only.
 Env override: ``CAUSADB_FREQTRADE_DB_PATH``.
+
+Fase B-1 (indicadores entry/exit, backward compatible): si
+``CAUSADB_FREQTRADE_ANALYSIS_CSV`` apunta al CSV de
+``freqtrade backtesting-analysis --analysis-to-csv``, cada
+``TRADE_EXECUTED`` se enriquece con ``indicators_entry`` (dict en el
+orden de la allowlist) + ``indicators_provenance`` — solo cuando hay
+match. Sin sidecar o sin match, las claves están ausentes (nunca None)
+y el harvest es idéntico al de hoy. Fail-closed: sidecar ilegible →
+warning + sin indicators, nunca aborta.
 """
 
 from __future__ import annotations
 
+import csv
+import logging
 import os
+import re
 import sqlite3
+from datetime import datetime
 from typing import Optional
 
 from causadb._event_registry import EventTypeSpec, register_type
 from causadb._harvest_source import HarvestSource
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +103,144 @@ def _normalize_timestamp(ts) -> str:
     if "T" not in s:
         s = s.replace(" ", "T")
     return s
+
+
+# ---------------------------------------------------------------------------
+# Fase B-1 — sidecar CSV de backtesting-analysis (puro, ~40 líneas)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_INDICATORS = ("rsi", "ema_9", "ema_21", "macd", "bb_lowerband", "bb_upperband")
+_MAX_INDICATORS = 6  # cota de peso del ledger
+_TIMEFRAME_S = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
+_DEFAULT_TF_S = 300
+_MAX_SIGNAL_ROWS = 50000
+_MAX_CSV_BYTES = 20 * 1024 * 1024
+_SIGNALS_CACHE: dict = {}  # (path, mtime) -> signals (solo lectura)
+_TZ_MILLIS_RE = re.compile(r"(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$")
+
+
+def _parse_indicators_allowlist() -> list[str]:
+    raw = os.environ.get("CAUSADB_FREQTRADE_INDICATORS", "")
+    inds = [p.strip() for p in raw.split(",") if p.strip()] or list(_DEFAULT_INDICATORS)
+    if len(inds) > _MAX_INDICATORS:
+        logger.warning("freqtrade indicators: allowlist recortada a %d", _MAX_INDICATORS)
+        inds = inds[:_MAX_INDICATORS]
+    return inds
+
+
+def _normalize_signal_timestamp(ts) -> str:
+    """_normalize_timestamp + strip de zona horaria y milisegundos."""
+    return _TZ_MILLIS_RE.sub("", _normalize_timestamp(ts).strip())
+
+
+def _timeframe_to_seconds(tf) -> int:
+    s = str(tf).strip() if tf is not None else ""
+    if s in _TIMEFRAME_S:
+        return _TIMEFRAME_S[s]
+    logger.warning("freqtrade indicators: timeframe %r desconocido, default %ds", tf, _DEFAULT_TF_S)
+    return _DEFAULT_TF_S
+
+
+def _parse_number(v):
+    s = str(v).strip() if v is not None else ""
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return s
+
+
+def _load_signals_csv(path, allowlist) -> dict:
+    """Sidecar → ``{(pair, ts_norm): {ind: valor}}`` (solo lectura).
+
+    Claves de entry salen de ``open_date`` (con columnas ``X (entry)``) y
+    las de exit de ``close_date`` (con ``X (exit)``) — nunca cruzadas.
+    Fail-closed: cualquier problema → warning + ``{}``.
+    """
+    if not path or not os.path.isfile(path):
+        logger.warning("freqtrade indicators: sidecar no legible: %r", path)
+        return {}
+    if os.path.getsize(path) > _MAX_CSV_BYTES:
+        logger.warning("freqtrade indicators: sidecar >20MB, se ignora")
+        return {}
+    key = (path, os.path.getmtime(path))
+    if key in _SIGNALS_CACHE:
+        return _SIGNALS_CACHE[key]
+    signals: dict = {}
+    try:
+        with open(path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            cols = [(c or "").strip() for c in (reader.fieldnames or [])]
+            if "pair" not in cols or "open_date" not in cols:
+                logger.warning("freqtrade indicators: header sin pair/open_date: %r", reader.fieldnames)
+                _SIGNALS_CACHE[key] = {}
+                return {}
+            ecol = {i: f"{i} (entry)" if f"{i} (entry)" in cols else (i if i in cols else None) for i in allowlist}
+            xcol = {i: f"{i} (exit)" if f"{i} (exit)" in cols else (i if i in cols else None) for i in allowlist}
+            for n, raw_row in enumerate(reader, 1):
+                if n > _MAX_SIGNAL_ROWS:
+                    logger.warning("freqtrade indicators: sidecar >50000 filas, se ignora")
+                    _SIGNALS_CACHE[key] = {}
+                    return {}
+                row = {(k or "").strip(): v for k, v in raw_row.items()}
+                pair = (row.get("pair") or "").strip()
+                if not pair:
+                    continue
+                for date_col, colmap in (("open_date", ecol), ("close_date", xcol)):
+                    if date_col not in cols:
+                        continue
+                    tnorm = _normalize_signal_timestamp(row.get(date_col))
+                    if not tnorm:
+                        continue
+                    inds = {}
+                    for i in allowlist:
+                        c = colmap[i]
+                        if c is None:
+                            continue
+                        v = _parse_number(row.get(c))
+                        if v is not None:
+                            inds[i] = v
+                    if inds:
+                        signals.setdefault((pair, tnorm), inds)
+    except (OSError, UnicodeDecodeError, UnicodeError, csv.Error, ValueError) as e:
+        logger.warning("freqtrade indicators: sidecar ilegible (%s), sin indicators", e)
+        _SIGNALS_CACHE[key] = {}
+        return {}
+    _SIGNALS_CACHE[key] = signals
+    return signals
+
+
+def _lookup_indicators(pair, ts, signals, timeframe_s) -> dict | None:
+    """Match exacto (pair+ts) y si falla tolerancia ±1×timeframe.
+
+    Múltiples candidatos → menor |delta|; empate → primera fila.
+    """
+    if not signals:
+        return None
+    p = (pair or "").strip()
+    t = _normalize_signal_timestamp(ts)
+    if not p or not t:
+        return None
+    hit = signals.get((p, t))
+    if hit is not None:
+        return dict(hit)
+    try:
+        target = datetime.fromisoformat(t)
+    except ValueError:
+        return None
+    best, best_delta = None, None
+    for (sp, st), inds in signals.items():
+        if sp != p:
+            continue
+        try:
+            cand = datetime.fromisoformat(st)
+        except ValueError:
+            continue
+        delta = abs((cand - target).total_seconds())
+        if delta <= timeframe_s and (best_delta is None or delta < best_delta):
+            best, best_delta = inds, delta
+    return dict(best) if best is not None else None
 
 
 def _trade_to_raws(row: tuple) -> list[dict]:
@@ -231,6 +384,21 @@ class FreqtradeHarvestSource(HarvestSource):
                     raws.append(raw)
         finally:
             con.close()
+
+        # Fase B-1: solo orquesta el enriquecimiento (puro arriba).
+        csv_path = os.environ.get("CAUSADB_FREQTRADE_ANALYSIS_CSV", "")
+        if csv_path:
+            allowlist = _parse_indicators_allowlist()
+            signals = _load_signals_csv(csv_path, allowlist)
+            if signals:
+                for raw in raws:
+                    inds = _lookup_indicators(
+                        raw.get("symbol"), raw.get("timestamp"), signals,
+                        _timeframe_to_seconds(raw.get("timeframe")),
+                    )
+                    if inds:
+                        raw["indicators_entry"] = inds
+                        raw["indicators_provenance"] = "backtest-analysis-csv"
 
         return raws
 
