@@ -8,9 +8,11 @@
   // ── State ────────────────────────────────────────────────────
   const state = {
     events: [],
+    trades: [],
     autoRefresh: false,
     refreshInterval: null,
     searchQuery: '',
+    currentView: 'ledger',
   };
 
   // ── DOM refs ─────────────────────────────────────────────────
@@ -57,6 +59,26 @@
   const metricCommands = $('metric-commands');
   const metricScoreCard = $('metric-score');
 
+  // ── Auth / login refs ──────────────────────────────────────────
+  const loginView = $('login-view');
+  const appView = $('app-view');
+  const loginForm = $('login-form');
+  const apiKeyInput = $('api-key-input');
+  const loginError = $('login-error');
+  const loginSaveBtn = $('login-save-btn');
+  const logoutBtn = $('logout-btn');
+
+  // ── Trades / nav refs ──────────────────────────────────────────
+  const navLedger = $('nav-ledger');
+  const navTrades = $('nav-trades');
+  const viewLedger = $('view-ledger');
+  const viewTrades = $('view-trades');
+  const tradesList = $('trades-list');
+  const tradesEmpty = $('trades-empty');
+  const tradesError = $('trades-error');
+  const tradesLoading = $('trades-loading');
+  const tradesReload = $('trades-reload');
+
   // ── UI helpers ───────────────────────────────────────────────
   function show(el) { el.classList.remove('hidden'); }
   function hide(el) { el.classList.add('hidden'); }
@@ -95,6 +117,102 @@
     if (!el) return el;
     while (el.firstChild) el.removeChild(el.firstChild);
     return el;
+  }
+
+  // ── Auth: llave API solo en esta pestaña (sessionStorage) ──────
+  // La llave vive solo en la memoria de la pestaña: nunca en disco,
+  // ni en el DOM, ni en la URL, ni en logs. Solo viaja como header
+  // X-API-Key en apiFetch().
+  const API_KEY_STORAGE = 'causadb_api_key';
+
+  function getApiKey() {
+    try { return sessionStorage.getItem(API_KEY_STORAGE) || ''; }
+    catch (e) { return ''; }
+  }
+  function setApiKey(k) {
+    try { sessionStorage.setItem(API_KEY_STORAGE, k); } catch (e) {}
+  }
+  function clearApiKey() {
+    try { sessionStorage.removeItem(API_KEY_STORAGE); } catch (e) {}
+  }
+
+  function showLogin(msg) {
+    if (loginView) show(loginView);
+    if (appView) hide(appView);
+    if (loginError) safeSet(loginError, msg || '');
+  }
+  function showApp() {
+    if (loginView) hide(loginView);
+    if (appView) show(appView);
+    if (loginError) safeSet(loginError, '');
+  }
+  function handleUnauthorized() {
+    clearApiKey();
+    showLogin('La llave venció o es inválida. Pegala de nuevo.');
+  }
+
+  // Wrapper central: inyecta X-API-Key; ante 401 borra la llave y
+  // muestra el login. TODOS los fetch a /api/* pasan por acá.
+  async function apiFetch(path, options) {
+    options = options || {};
+    var headers = {};
+    var optHeaders = options.headers || {};
+    Object.keys(optHeaders).forEach(function (k) { headers[k] = optHeaders[k]; });
+    var key = getApiKey();
+    if (key) headers['X-API-Key'] = key;
+    var init = { method: options.method || 'GET', headers: headers };
+    if (options.body !== undefined) init.body = options.body;
+    var resp = await fetch(path, init);
+    if (resp.status === 401) {
+      handleUnauthorized();
+      var err = new Error('HTTP 401: sin autorización (llave inválida o ausente)');
+      err.status = 401;
+      throw err;
+    }
+    return resp;
+  }
+
+  if (loginForm) {
+    loginForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var candidate = apiKeyInput ? apiKeyInput.value : '';
+      if (apiKeyInput) apiKeyInput.value = '';
+      if (!candidate) {
+        safeSet(loginError, 'Pegá una llave primero.');
+        return;
+      }
+      loginSaveBtn.disabled = true;
+      safeSet(loginError, 'Validando…');
+      try {
+        // Validación con llave candidata (no guardada todavía).
+        var meResp = await fetch('/api/auth/me', { headers: { 'X-API-Key': candidate } });
+        if (meResp.status === 401) {
+          safeSet(loginError, 'Llave inválida.');
+          return;
+        }
+        if (!meResp.ok) {
+          safeSet(loginError, 'No se pudo validar (HTTP ' + meResp.status + ').');
+          return;
+        }
+        setApiKey(candidate);
+        showApp();
+        bootstrap();
+      } catch (err) {
+        safeSet(loginError, 'Sin conexión al servidor.');
+      } finally {
+        loginSaveBtn.disabled = false;
+      }
+    });
+  }
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', function () {
+      clearApiKey();
+      state.events = [];
+      state.trades = [];
+      if (apiKeyInput) apiKeyInput.value = '';
+      showLogin('');
+    });
   }
 
   // ── Colour map ───────────────────────────────────────────────
@@ -140,7 +258,7 @@
     setEmpty(false);
 
     try {
-      const resp = await fetch('/api/query?limit=' + QUERY_LIMIT);
+      const resp = await apiFetch('/api/query?limit=' + QUERY_LIMIT);
       if (!resp.ok) {
         let detail = '';
         try { const e = await resp.json(); detail = e.error || ''; } catch {}
@@ -165,7 +283,7 @@
   async function fetchScore() {
     scoreRefreshBtn.disabled = true;
     try {
-      const resp = await fetch('/api/score');
+      const resp = await apiFetch('/api/score');
       if (!resp.ok) {
         show(scorePanel);
         scoreValue.textContent = 'err';
@@ -220,7 +338,7 @@
 
   async function fetchTestCount() {
     try {
-      var resp = await fetch('/api/health');
+      var resp = await apiFetch('/api/health');
       if (!resp.ok) return;
       var data = await resp.json();
       metricTestCount.textContent = data.total_tests || data.total_events || '—';
@@ -344,7 +462,7 @@
   // ── Update Check ──────────────────────────────────────────────
   async function fetchUpdateCheck() {
     try {
-      const resp = await fetch('/api/check-update');
+      const resp = await apiFetch('/api/check-update');
       if (!resp.ok) return;
       const data = await resp.json();
       if (data.needs_update) {
@@ -354,7 +472,7 @@
           updateBannerBtn.textContent = 'Actualizando...';
           updateBannerBtn.disabled = true;
           try {
-            await fetch('/api/update', { method: 'POST' });
+            await apiFetch('/api/update', { method: 'POST' });
             updateBannerBtn.textContent = 'Reiniciar daemon';
           } catch (e) {
             updateBannerBtn.textContent = 'Error';
@@ -371,7 +489,7 @@
   // ── Crash Reporter ────────────────────────────────────────────
   async function fetchCrashes() {
     try {
-      const resp = await fetch('/api/crashes');
+      const resp = await apiFetch('/api/crashes');
       if (!resp.ok) return;
       const crashes = await resp.json();
       if (crashes.length > 0) {
@@ -399,7 +517,7 @@
 
   async function renderCrashList() {
     try {
-      const resp = await fetch('/api/crashes');
+      const resp = await apiFetch('/api/crashes');
       if (!resp.ok) return;
       const crashes = await resp.json();
       clearEl(crashList);
@@ -423,7 +541,7 @@
   crashSendAll.addEventListener('click', async function () {
     crashSendAll.disabled = true;
     try {
-      const resp = await fetch('/api/crashes/export', { method: 'POST' });
+      const resp = await apiFetch('/api/crashes/export', { method: 'POST' });
       if (resp.ok) {
         alert('Crash reports exported. You can find them in ~/.causadb/crashes/');
       } else {
@@ -439,7 +557,7 @@
   crashDeleteAll.addEventListener('click', async function () {
     if (!confirm('Borrar todos los crash reports?')) return;
     try {
-      await fetch('/api/crashes', { method: 'DELETE' });
+      await apiFetch('/api/crashes', { method: 'DELETE' });
       hide(crashBanner);
       hide(crashModal);
     } catch (e) {
@@ -450,7 +568,7 @@
   // ── Telemetry (#6 Privacidad Opt-out) ────────────────────────
   async function fetchTelemetryStatus() {
     try {
-      const resp = await fetch('/api/config');
+      const resp = await apiFetch('/api/config');
       if (!resp.ok) return;
       const config = await resp.json();
       telemetryToggle.checked = config.telemetry_enabled !== false;
@@ -462,7 +580,7 @@
   telemetryToggle.addEventListener('change', async function () {
     const enabled = this.checked;
     try {
-      await fetch('/api/config', {
+      await apiFetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telemetry_enabled: enabled }),
@@ -484,7 +602,7 @@
       const url = query
         ? '/api/query?q=' + encodeURIComponent(query) + '&limit=' + QUERY_LIMIT
         : '/api/query?limit=' + QUERY_LIMIT;
-      const resp = await fetch(url);
+      const resp = await apiFetch(url);
       if (!resp.ok) {
         let detail = '';
         try { const e = await resp.json(); detail = e.error || ''; } catch {}
@@ -693,7 +811,7 @@
     traceStatus.textContent = 'Loading…';
     traceButton.disabled = true;
     try {
-      const resp = await fetch('/api/trace', {
+      const resp = await apiFetch('/api/trace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: lastTracedEvent.event_id }),
@@ -865,7 +983,7 @@
     reviveButton.disabled = true;
     try {
       const isoString = new Date(val).toISOString();
-      const resp = await fetch('/api/replay', {
+      const resp = await apiFetch('/api/replay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to_time: isoString }),
@@ -888,7 +1006,7 @@
 
   // ── Export ────────────────────────────────────────────────────
   async function exportEvents(format) {
-    const resp = await fetch('/api/export', {
+    const resp = await apiFetch('/api/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ format: format }),
@@ -962,7 +1080,7 @@
     chatStatus.textContent = 'Pensando...';
 
     try {
-      const resp = await fetch('/api/assistant', {
+      const resp = await apiFetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: text })
@@ -1001,7 +1119,7 @@
 
   async function fetchDaemonStatus() {
     try {
-      const resp = await fetch('/api/daemon/status');
+      const resp = await apiFetch('/api/daemon/status');
       if (!resp.ok) return;
       const data = await resp.json();
       daemonIndicator.className = 'daemon-indicator ' + (data.running ? 'running' : 'stopped');
@@ -1020,7 +1138,7 @@
     daemonToggleBtn.disabled = true;
     daemonToggleBtn.textContent = 'Procesando...';
     try {
-      var resp = await fetch('/api/daemon/' + (isRunning ? 'stop' : 'start'), { method: 'POST' });
+      var resp = await apiFetch('/api/daemon/' + (isRunning ? 'stop' : 'start'), { method: 'POST' });
       var data = await resp.json();
       if (data.status === 'started' || data.status === 'stopped') {
         await fetchDaemonStatus();
@@ -1035,7 +1153,7 @@
 
   async function fetchWorkspaces() {
     try {
-      var resp = await fetch('/api/workspaces');
+      var resp = await apiFetch('/api/workspaces');
       if (!resp.ok) return;
       var data = await resp.json();
       clearEl(workspaceSelect);
@@ -1061,7 +1179,7 @@
     if (!ledgerPath) return;
     var prevValue = this.dataset.prevValue || this.querySelector('option[selected]')?.value || '';
     try {
-      var resp = await fetch('/api/workspace/switch', {
+      var resp = await apiFetch('/api/workspace/switch', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ledger_path: ledgerPath}),
@@ -1083,13 +1201,184 @@
   });
 
   // ── Bootstrap ────────────────────────────────────────────────
-  fetchEvents();
-  fetchScore();
-  fetchUpdateCheck();
-  fetchCrashes();
-  fetchTelemetryStatus();
-  fetchDaemonStatus();
-  fetchWorkspaces();
-  if (state.autoRefresh) startAutoRefresh();
+  // ── Trades: ficha de evidencia (solo safeSet/safeEl/textContent) ──
+  function setTradesLoading(on) {
+    if (!tradesLoading) return;
+    on ? show(tradesLoading) : hide(tradesLoading);
+  }
+  function setTradesError(msg) {
+    if (!tradesError) return;
+    if (msg) {
+      safeSet(tradesError, msg);
+      show(tradesError);
+    } else {
+      hide(tradesError);
+    }
+  }
+  function setTradesEmpty(on) {
+    if (!tradesEmpty) return;
+    on ? show(tradesEmpty) : hide(tradesEmpty);
+  }
+
+  function fmtTradeVal(v) {
+    if (v == null) return '—';
+    if (typeof v === 'object') {
+      try { return JSON.stringify(v); } catch (e) { return String(v); }
+    }
+    return String(v);
+  }
+
+  function tradeField(grid, key, val) {
+    var f = document.createElement('div');
+    f.className = 'trade-field';
+    f.appendChild(safeEl('span', key, 'trade-field-key'));
+    f.appendChild(safeEl('span', fmtTradeVal(val), 'trade-field-val'));
+    grid.appendChild(f);
+  }
+
+  function tradeLegBox(card, title, leg) {
+    var p = (leg && leg.payload) || {};
+    var box = document.createElement('div');
+    box.className = 'trade-leg';
+    box.appendChild(safeEl('div', title, 'trade-leg-title'));
+    var grid = document.createElement('div');
+    grid.className = 'trade-grid';
+    tradeField(grid, 'phase', p.phase);
+    tradeField(grid, 'side', p.side);
+    tradeField(grid, 'qty', p.qty);
+    tradeField(grid, 'price', p.price);
+    tradeField(grid, 'enter_tag', p.enter_tag);
+    tradeField(grid, 'exit_reason', p.exit_reason);
+    tradeField(grid, 'indicators_entry', p.indicators_entry);
+    tradeField(grid, 'indicators_provenance', p.indicators_provenance);
+    tradeField(grid, 'timestamp', (leg && leg.timestamp) || null);
+    tradeField(grid, 'event_id', (leg && leg.event_id) || null);
+    box.appendChild(grid);
+    card.appendChild(box);
+  }
+
+  function tradePnlLine(entry, exit) {
+    var pe = entry && entry.payload ? entry.payload : {};
+    var px = exit && exit.payload ? exit.payload : {};
+    var entryPx = Number(pe.price), exitPx = Number(px.price), qty = Number(pe.qty || px.qty);
+    if (!isFinite(entryPx) || !isFinite(exitPx) || !isFinite(qty)) return null;
+    var side = String(pe.side || px.side || '').toLowerCase();
+    var dir = (side === 'sell' || side === 'short') ? -1 : 1;
+    var pnl = (exitPx - entryPx) * qty * dir;
+    var line = document.createElement('div');
+    line.className = 'trade-pnl ' + (pnl >= 0 ? 'trade-pnl-profit' : 'trade-pnl-loss');
+    var sign = pnl >= 0 ? '+' : '';
+    safeSet(line, 'P&L aprox.: ' + sign + pnl + ' (salida ' + exitPx + ' − entrada ' + entryPx + ' × ' + qty + ')');
+    return line;
+  }
+
+  function renderTradeCard(g) {
+    var card = document.createElement('div');
+    card.className = 'trade-card';
+    var head = document.createElement('div');
+    head.className = 'trade-head';
+    head.appendChild(safeEl('span', g.trade_id || 'Operación sin ID', 'trade-title'));
+    if (g.symbol != null) {
+      head.appendChild(safeEl('span', g.symbol, 'event-type-badge'));
+    }
+    if (g.strategy != null) {
+      head.appendChild(safeEl('span', g.strategy, 'event-type-badge'));
+    }
+    card.appendChild(head);
+    var grid = document.createElement('div');
+    grid.className = 'trade-grid';
+    tradeField(grid, 'trade_id', g.trade_id);
+    tradeField(grid, 'symbol', g.symbol);
+    tradeField(grid, 'strategy', g.strategy);
+    card.appendChild(grid);
+    if (g.entry) tradeLegBox(card, 'Entrada', g.entry);
+    if (g.exit) tradeLegBox(card, 'Salida', g.exit);
+    var pnl = (g.entry && g.exit) ? tradePnlLine(g.entry, g.exit) : null;
+    if (pnl) card.appendChild(pnl);
+    // Sección fija: lo que el ledger NO puede dar (siempre visible).
+    var nr = document.createElement('div');
+    nr.className = 'trade-no-recover';
+    nr.appendChild(safeEl('strong', 'No recuperable desde el ledger'));
+    nr.appendChild(safeEl('span',
+      'Versión de estrategia, configuración del bot y velas originales no quedan ' +
+      'guardadas en el ledger. Esta ficha solo muestra lo que trae el evento TRADE_EXECUTED.'));
+    card.appendChild(nr);
+    return card;
+  }
+
+  function renderTrades(groups) {
+    if (!tradesList) return;
+    clearEl(tradesList);
+    if (!groups || groups.length === 0) {
+      setTradesEmpty(true);
+      return;
+    }
+    setTradesEmpty(false);
+    groups.forEach(function (g) {
+      tradesList.appendChild(renderTradeCard(g));
+    });
+  }
+
+  async function fetchTrades() {
+    setTradesLoading(true);
+    setTradesError(null);
+    setTradesEmpty(false);
+    try {
+      var helper = (typeof CausaDBTrades !== 'undefined') ? CausaDBTrades : null;
+      if (!helper || !helper.groupTrades) {
+        throw new Error('No se cargó trades.js (groupTrades ausente).');
+      }
+      var resp = await apiFetch('/api/query?type=TRADE_EXECUTED&limit=1000');
+      if (!resp.ok) {
+        var detail = '';
+        try { var e = await resp.json(); detail = e.error || ''; } catch (ign) {}
+        throw new Error('HTTP ' + resp.status + (detail ? ': ' + detail : ''));
+      }
+      var items = await resp.json();
+      var groups = helper.groupTrades(items);
+      state.trades = groups;
+      renderTrades(groups);
+    } catch (err) {
+      if (err && err.status === 401) return; // login ya visible
+      setTradesError('No se pudieron cargar operaciones: ' + err.message);
+    } finally {
+      setTradesLoading(false);
+    }
+  }
+
+  // ── Tabs Ledger / Trades ─────────────────────────────────────────
+  function switchView(name) {
+    state.currentView = name;
+    var isTrades = name === 'trades';
+    if (navLedger) navLedger.classList.toggle('active', !isTrades);
+    if (navTrades) navTrades.classList.toggle('active', isTrades);
+    if (viewLedger) { isTrades ? hide(viewLedger) : show(viewLedger); }
+    if (viewTrades) { isTrades ? show(viewTrades) : hide(viewTrades); }
+    if (isTrades) fetchTrades();
+  }
+
+  if (navLedger) navLedger.addEventListener('click', function () { switchView('ledger'); });
+  if (navTrades) navTrades.addEventListener('click', function () { switchView('trades'); });
+  if (tradesReload) tradesReload.addEventListener('click', function () { fetchTrades(); });
+
+  function bootstrap() {
+    fetchEvents();
+    fetchScore();
+    fetchUpdateCheck();
+    fetchCrashes();
+    fetchTelemetryStatus();
+    fetchDaemonStatus();
+    fetchWorkspaces();
+    if (state.autoRefresh) startAutoRefresh();
+    if (state.currentView === 'trades') fetchTrades();
+  }
+
+  // ── Init con puerta: sin llave no se pide ningún dato ────────────
+  if (getApiKey()) {
+    showApp();
+    bootstrap();
+  } else {
+    showLogin('');
+  }
 
 })();

@@ -1,142 +1,196 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CausaDB — Ledger Intelligence</title>
   <link rel="stylesheet" href="/dashboard/style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-  <header>
-    <div class="header-content">
+  <!-- Login con llave API (solo esta pestaña, sin "recordarme") -->
+  <section id="login-view">
+    <div class="login-card">
       <h1 class="logo">⬡ CausaDB <span>Ledger</span></h1>
-      <div class="workspace-selector">
-        <select id="workspace-select">
-          <option value="">Cargando proyectos…</option>
-        </select>
-      </div>
-      <div class="search-container">
+      <p class="login-desc">Pegá tu llave API para ver el ledger. Queda solo en esta pestaña (nunca se guarda en el disco ni en la nube).</p>
+      <form id="login-form" autocomplete="off">
+        <label for="api-key-input">Llave API</label>
         <input
-          type="text"
-          id="search-input"
-          placeholder="Buscar eventos… (RNA, FILE_MODIFIED, governance)"
+          type="password"
+          id="api-key-input"
+          placeholder="Pegá tu llave API…"
           autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
         />
-        <span id="search-status" class="search-status"></span>
-      </div>
+        <button type="submit" id="login-save-btn">Guardar en esta pestaña</button>
+      </form>
+      <p id="login-error" class="login-error" role="alert"></p>
+      <p class="login-hint">El panel pide la llave en cada arranque. Los archivos del panel son públicos; los datos requieren llave.</p>
     </div>
-  </header>
+  </section>
 
-  <main>
-    <div id="status-bar">
-      <div id="event-count">0 events</div>
-      <div class="daemon-controls">
-        <span id="daemon-indicator" class="daemon-indicator stopped" title="Estado del daemon">⬤</span>
-        <button id="daemon-toggle-btn" class="daemon-btn">Iniciar Daemon</button>
-        <div class="daemon-subservices">
-          <span class="subservice inactive" data-service="vigilante" title="Vigilante">V</span>
-          <span class="subservice inactive" data-service="mcp_proxy" title="MCP Proxy">M</span>
-          <span class="subservice inactive" data-service="proxy_server" title="Proxy LLM">P</span>
+  <div id="app-view" class="hidden">
+    <aside id="sidebar">
+      <h1 class="logo">⬡ CausaDB <span>Ledger</span></h1>
+      <nav class="sidebar-nav">
+        <button id="nav-ledger" class="nav-btn active" data-view="ledger">◈ Ledger</button>
+        <button id="nav-trades" class="nav-btn" data-view="trades">⚖ Trades</button>
+      </nav>
+      <div class="sidebar-auth">
+        <span id="key-status" class="key-status" title="Llave API en esta pestaña">🔑 llave cargada</span>
+        <button id="logout-btn" class="logout-btn" title="Borra la llave de esta pestaña y vuelve al login">Olvidar</button>
+      </div>
+    </aside>
+
+    <div class="main-col">
+      <header>
+        <div class="header-content">
+          <div class="workspace-selector">
+            <select id="workspace-select">
+              <option value="">Cargando proyectos…</option>
+            </select>
+          </div>
+          <div class="search-container">
+            <input
+              type="text"
+              id="search-input"
+              placeholder="Buscar eventos… (RNA, FILE_MODIFIED, governance)"
+              autocomplete="off"
+            />
+            <span id="search-status" class="search-status"></span>
+          </div>
         </div>
-      </div>
-      <span id="refresh-status" class="clickable" title="Toggle auto-refresh">auto-refresh off</span>
-    </div>
+      </header>
 
-<div class="metrics-row">
-  <div class="metric-card" data-type="score" id="metric-score" style="cursor:pointer" title="Click for detail">
-    <div class="metric-icon">⚡</div>
-    <div class="metric-value" id="metric-score-value">—</div>
-    <div class="metric-label">Productivity Score</div>
-  </div>
-  <div class="metric-card" data-type="events" id="metric-event-count">
-    <div class="metric-icon">◈</div>
-    <div class="metric-value" id="metric-event-count-value">0</div>
-    <div class="metric-label">Events</div>
-  </div>
-  <div class="metric-card" data-type="tests" id="metric-test-count">
-    <div class="metric-icon">✓</div>
-    <div class="metric-value" id="metric-test-count-value">—</div>
-    <div class="metric-label">Tests</div>
-  </div>
-  <div class="metric-card" data-type="commands" id="metric-commands">
-    <div class="metric-icon">⚙</div>
-    <div class="metric-value" id="metric-commands-value">0</div>
-    <div class="metric-label">Commands Run</div>
-  </div>
-</div>
-
-    <div class="secondary-bar">
-      <div id="score-panel" class="hidden">
-        <div id="score-main" class="score-main clickable" title="Click for details">
-          <span id="score-value" class="score-value">—</span>
-          <span class="score-label">Score</span>
-          <span class="score-bars">
-            <span class="score-bar-label">C</span><span id="score-bar-churn" class="score-bar-fill" style="width:0%"></span>
-            <span class="score-bar-spacer"></span>
-            <span class="score-bar-label">W</span><span id="score-bar-waste" class="score-bar-fill" style="width:0%"></span>
-            <span class="score-bar-spacer"></span>
-            <span class="score-bar-label">S</span><span id="score-bar-survival" class="score-bar-fill" style="width:0%"></span>
-          </span>
+      <main>
+        <div id="status-bar">
+          <div id="event-count">0 events</div>
+          <div class="daemon-controls">
+            <span id="daemon-indicator" class="daemon-indicator stopped" title="Estado del daemon">⬤</span>
+            <button id="daemon-toggle-btn" class="daemon-btn">Iniciar Daemon</button>
+            <div class="daemon-subservices">
+              <span class="subservice inactive" data-service="vigilante" title="Vigilante">V</span>
+              <span class="subservice inactive" data-service="mcp_proxy" title="MCP Proxy">M</span>
+              <span class="subservice inactive" data-service="proxy_server" title="Proxy LLM">P</span>
+            </div>
+          </div>
+          <span id="refresh-status" class="clickable" title="Toggle auto-refresh">auto-refresh off</span>
         </div>
-        <button id="score-refresh" class="score-refresh-btn" title="Refresh Score">↻</button>
+
+        <div id="view-ledger">
+          <div class="metrics-row">
+            <div class="metric-card" data-type="score" id="metric-score" style="cursor:pointer" title="Click for detail">
+              <div class="metric-icon">⚡</div>
+              <div class="metric-value" id="metric-score-value">—</div>
+              <div class="metric-label">Productivity Score</div>
+            </div>
+            <div class="metric-card" data-type="events" id="metric-event-count">
+              <div class="metric-icon">◈</div>
+              <div class="metric-value" id="metric-event-count-value">0</div>
+              <div class="metric-label">Events</div>
+            </div>
+            <div class="metric-card" data-type="tests" id="metric-test-count">
+              <div class="metric-icon">✓</div>
+              <div class="metric-value" id="metric-test-count-value">—</div>
+              <div class="metric-label">Tests</div>
+            </div>
+            <div class="metric-card" data-type="commands" id="metric-commands">
+              <div class="metric-icon">⚙</div>
+              <div class="metric-value" id="metric-commands-value">0</div>
+              <div class="metric-label">Commands Run</div>
+            </div>
+          </div>
+
+          <div class="secondary-bar">
+            <div id="score-panel" class="hidden">
+              <div id="score-main" class="score-main clickable" title="Click for details">
+                <span id="score-value" class="score-value">—</span>
+                <span class="score-label">Score</span>
+                <span class="score-bars">
+                  <span class="score-bar-label">C</span><span id="score-bar-churn" class="score-bar-fill" style="width:0%"></span>
+                  <span class="score-bar-spacer"></span>
+                  <span class="score-bar-label">W</span><span id="score-bar-waste" class="score-bar-fill" style="width:0%"></span>
+                  <span class="score-bar-spacer"></span>
+                  <span class="score-bar-label">S</span><span id="score-bar-survival" class="score-bar-fill" style="width:0%"></span>
+                </span>
+              </div>
+              <button id="score-refresh" class="score-refresh-btn" title="Refresh Score">↻</button>
+            </div>
+
+            <div id="telemetry-bar" class="telemetry-bar">
+              <label class="toggle-switch">
+                <input type="checkbox" id="telemetry-toggle" checked>
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="toggle-label">Telemetría</span>
+              <span class="toggle-info">Solo crash reports y métricas de uso. Nunca datos personales.</span>
+            </div>
+          </div>
+
+          <div id="update-banner" class="update-banner hidden">
+            <span>⚡ Nueva versión disponible: </span>
+            <span id="update-banner-version">v?</span>
+            <a href="#" id="update-banner-btn">Actualizar</a>
+          </div>
+
+          <div id="crash-banner" class="crash-banner hidden">
+            <span id="crash-banner-text"></span>
+            <button id="crash-banner-btn">Ver</button>
+          </div>
+
+          <div id="loading" class="hidden">
+            <div class="spinner"></div>
+            <span>Loading ledger events…</span>
+          </div>
+
+          <div id="error-state" class="hidden"></div>
+
+          <div id="empty-state" class="hidden">
+            <span class="empty-icon">◌</span>
+            <span>No events found.</span>
+          </div>
+
+          <div id="timeline-container">
+            <div id="timeline-line"></div>
+            <div id="timeline-events"></div>
+          </div>
+        </div>
+
+        <div id="view-trades" class="hidden">
+          <div class="trades-toolbar">
+            <h2>Trades — ficha de evidencia</h2>
+            <button id="trades-reload" class="daemon-btn">Recargar</button>
+          </div>
+          <p id="trades-note" class="trades-note">Mostrando hasta 1000 eventos recientes (sin paginación).</p>
+          <div id="trades-loading" class="hidden">
+            <div class="spinner"></div>
+            <span>Cargando operaciones…</span>
+          </div>
+          <div id="trades-error" class="hidden"></div>
+          <div id="trades-empty" class="hidden">
+            <span class="empty-icon">◌</span>
+            <span>Este ledger no tiene operaciones.</span>
+          </div>
+          <div id="trades-list"></div>
+        </div>
+      </main>
+
+      <div id="export-toolbar">
+        <span style="color:var(--text-muted);font-size:0.82rem;">Export:</span>
+        <button id="export-csv">CSV</button>
+        <button id="export-json">JSON</button>
       </div>
 
-      <div id="telemetry-bar" class="telemetry-bar">
-        <label class="toggle-switch">
-          <input type="checkbox" id="telemetry-toggle" checked>
-          <span class="toggle-slider"></span>
-        </label>
-        <span class="toggle-label">Telemetría</span>
-        <span class="toggle-info">Solo crash reports y métricas de uso. Nunca datos personales.</span>
+      <div id="revive-toolbar">
+        <label for="revive-datetime">Revive to (UTC):</label>
+        <input type="datetime-local" id="revive-datetime">
+        <button id="revive-button">Revive</button>
+        <span id="revive-status"></span>
       </div>
+
+      <pre id="revive-result" class="hidden"></pre>
     </div>
-
-    <div id="update-banner" class="update-banner hidden">
-      <span>⚡ Nueva versión disponible: </span>
-      <span id="update-banner-version">v?</span>
-      <a href="#" id="update-banner-btn">Actualizar</a>
-    </div>
-
-    <div id="crash-banner" class="crash-banner hidden">
-      <span id="crash-banner-text"></span>
-      <button id="crash-banner-btn">Ver</button>
-    </div>
-
-    <div id="loading" class="hidden">
-      <div class="spinner"></div>
-      <span>Loading ledger events…</span>
-    </div>
-
-    <div id="error-state" class="hidden"></div>
-
-    <div id="empty-state" class="hidden">
-      <span class="empty-icon">◌</span>
-      <span>No events found.</span>
-    </div>
-
-    <div id="timeline-container">
-      <div id="timeline-line"></div>
-      <div id="timeline-events"></div>
-    </div>
-  </main>
-
-  <div id="export-toolbar">
-    <span style="color:var(--text-muted);font-size:0.82rem;">Export:</span>
-    <button id="export-csv">CSV</button>
-    <button id="export-json">JSON</button>
   </div>
-
-  <div id="revive-toolbar">
-    <label for="revive-datetime">Revive to (UTC):</label>
-    <input type="datetime-local" id="revive-datetime">
-    <button id="revive-button">Revive</button>
-    <span id="revive-status"></span>
-  </div>
-
-  <pre id="revive-result" class="hidden"></pre>
 
   <div id="event-detail-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
@@ -205,6 +259,7 @@
     </div>
   </div>
 
+  <script src="/dashboard/trades.js"></script>
   <script src="/dashboard/app.js"></script>
 </body>
 </html>

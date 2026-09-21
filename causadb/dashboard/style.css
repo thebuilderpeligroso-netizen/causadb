@@ -15,7 +15,8 @@
   --radius: 12px;
   --radius-sm: 8px;
   --shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
-  --mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -30,7 +31,7 @@ body {
   background-image:
     radial-gradient(900px 480px at 78% -8%, rgba(94, 106, 210, 0.11), transparent 62%),
     radial-gradient(760px 420px at 8% 108%, rgba(94, 106, 210, 0.06), transparent 58%);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--sans);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -55,7 +56,7 @@ header {
   min-height: 72px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: auto minmax(180px, 250px) minmax(260px, 1fr);
+  grid-template-columns: minmax(180px, 250px) minmax(260px, 1fr);
   align-items: center;
   gap: 24px;
 }
@@ -278,4 +279,141 @@ main { width: min(1400px, calc(100% - 48px)); margin: 0 auto; padding-bottom: 80
   .modal { padding: 12px; }
   .modal-content { max-height: 94vh; }
   .toggle-info { display: none; }
+}
+
+/* ── Login con llave API ─────────────────────────────────────────── */
+#login-view {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+#login-view.hidden { display: none !important; }
+.login-card {
+  width: min(440px, 100%);
+  padding: 32px 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.login-card .logo { margin-bottom: 12px; }
+.login-desc { color: var(--text-secondary); font-size: 14px; }
+#login-form label { display: block; margin: 18px 0 6px; color: var(--text-secondary); font-size: 13px; }
+#api-key-input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  padding: 9px 12px;
+  font-family: var(--mono);
+}
+#login-save-btn {
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid rgba(94,106,210,.55);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--text);
+  padding: 10px 12px;
+  font-weight: 600;
+}
+#login-save-btn:hover { filter: brightness(1.08); }
+#login-save-btn:disabled { opacity: .6; }
+.login-error { min-height: 20px; color: var(--red); font-size: 13px; }
+.login-hint { color: var(--text-tertiary); font-size: 12px; }
+
+/* ── Layout admin con sidebar oscuro ─────────────────────────────── */
+#app-view { display: flex; align-items: stretch; min-height: 100vh; }
+#app-view.hidden { display: none !important; }
+#sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  flex: 0 0 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 22px 16px;
+  border-right: 1px solid var(--border);
+  background: #121316;
+}
+#sidebar .logo { font-size: 17px; padding: 0 8px; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; }
+.nav-btn {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 14px;
+}
+.nav-btn:hover { background: var(--surface); color: var(--text); }
+.nav-btn.active { border-color: rgba(94,106,210,.4); background: var(--accent-soft); color: var(--text); }
+.sidebar-auth {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.key-status { color: var(--green); font-size: 12px; }
+.logout-btn {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.logout-btn:hover { border-color: var(--red); color: var(--red); }
+.main-col { flex: 1; min-width: 0; }
+
+/* ── Trades: ficha de evidencia ──────────────────────────────────── */
+.trades-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0 0; }
+.trades-toolbar h2 { margin: 0; font-size: 18px; }
+.trades-note { color: var(--text-tertiary); font-size: 12px; }
+#trades-loading, #trades-error, #trades-empty { padding: 48px 20px; text-align: center; color: var(--text-secondary); }
+#trades-list { display: flex; flex-direction: column; gap: 14px; padding: 8px 0 24px; }
+.trade-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px 20px;
+}
+.trade-card:hover { border-color: var(--accent); }
+.trade-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.trade-title { color: var(--text); font-size: 15px; font-weight: 700; }
+.trade-badge-side-long { border-color: rgba(115,201,145,.4); background: rgba(115,201,145,.1); color: var(--green); }
+.trade-badge-side-short { border-color: rgba(217,121,133,.4); background: rgba(217,121,133,.1); color: var(--red); }
+.trade-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 16px; }
+.trade-field { display: flex; flex-direction: column; gap: 2px; }
+.trade-field-key { color: var(--text-tertiary); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.trade-field-val { color: var(--text); font-size: 13px; font-family: var(--mono); overflow-wrap: anywhere; }
+.trade-leg { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.trade-leg-title { color: var(--text-secondary); font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.trade-pnl { margin-top: 12px; color: var(--text-secondary); font-size: 13px; }
+.trade-pnl-profit { color: var(--green); }
+.trade-pnl-loss { color: var(--red); }
+.trade-no-recover {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(14,15,17,.45);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+.trade-no-recover strong { display: block; margin-bottom: 4px; color: var(--text-secondary); font-size: 12px; }
+
+@media (max-width: 860px) {
+  #app-view { flex-direction: column; }
+  #sidebar { position: static; height: auto; flex: none; flex-direction: row; align-items: center; flex-wrap: wrap; }
+  .sidebar-nav { flex-direction: row; }
+  .sidebar-auth { margin: 0 0 0 auto; border: 0; padding: 0; flex-direction: row; align-items: center; }
 }
