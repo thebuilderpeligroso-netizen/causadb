@@ -1,0 +1,12 @@
+Comandos reales usados para generar ledger.log (cuaderno de muestra).
+Todo corre con el producto; los datos son de ejemplo (ver FUENTE.txt).
+
+1) Cosechar con el harvester del producto (3 operaciones):
+export LEDGER="$PWD/muestra_trading/ledger.log" CURSORS="$PWD/muestra_trading/cursors.json"
+CAUSADB_FREQTRADE_DB_PATH="$PWD/muestra_trading/tradesv3.sqlite" CAUSADB_FREQTRADE_ANALYSIS_CSV="$PWD/muestra_trading/analysis.csv" CAUSADB_FREQTRADE_INDICATORS="rsi,ema_9" .venv/bin/python -c "from causadb._harvester import Harvester; from causadb._harvest_source_freqtrade import FreqtradeHarvestSource; import os; h=Harvester(os.environ['LEDGER'],os.environ['CURSORS']); h.register_source(FreqtradeHarvestSource(os.environ['LEDGER'])); print(h.harvest_all())"
+
+2) Consultar una operación (el producto responde):
+.venv/bin/causadb query --ledger "$PWD/muestra_trading/ledger.log" --text "ETH/USDT"
+
+3) Verificar que nadie reescribió la historia:
+.venv/bin/causadb validate --ledger "$PWD/muestra_trading/ledger.log"

@@ -3,6 +3,8 @@
 *.db
 *.log
 *.pid
+cursors.json
+*.last_hash.json
 pids/
 logs/
 ocb/

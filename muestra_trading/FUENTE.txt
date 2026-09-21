@@ -1,0 +1,5 @@
+# Datos de EJEMPLO con formato real (para la muestra de evidencia).
+# - tradesv3.sqlite: copia de la fixture de pruebas (esquema real Freqtrade).
+# - analysis.csv: ejemplo con el formato que genera el análisis de backtest.
+# - ledger.log: generado por el harvester real del producto (ver COMANDOS.txt).
+# Nada de esta carpeta toca el historial de producción.
