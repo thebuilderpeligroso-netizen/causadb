@@ -9,7 +9,7 @@ El `main.py` es el único lugar que llama `print()`.
 
 import json
 
-from causadb.otel._exporter import export_ledger
+from causadb._otel_require import try_import_otel
 
 
 def cmd_export(args) -> tuple:
@@ -31,6 +31,15 @@ def cmd_export(args) -> tuple:
                 "supported": ["otel"],
             }),
         )
+
+    # Lazy OTel: el import va DENTRO de la función via helper compartido
+    # (el top-level `from causadb.otel...` crasheaba first-install sin el
+    # extra `dev` por la cadena __init__ → _mapper → opentelemetry.sdk).
+    export_ledger, _otel_error = try_import_otel(
+        "causadb.otel._exporter", "export_ledger"
+    )
+    if _otel_error is not None:
+        return _otel_error
 
     try:
         result = export_ledger(

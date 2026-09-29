@@ -129,6 +129,88 @@ WantedBy=default.target
 :meth:`str.format`.
 """
 
+HARVEST_SERVICE_NAME = "causadb-harvest"
+"""Name of the harvest supervisor unit (without the ``.service`` suffix)."""
+
+HEARTBEAT_FILENAME = "harvest.heartbeat"
+"""Heartbeat file name, next to the ledger (same dir, next to cursors)."""
+
+HARVEST_SERVICE_TEMPLATE = """\
+[Unit]
+Description=CausaDB harvest supervisor (agent-store harvester)
+Documentation=https://github.com/causadb/causadb
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={executable} harvest start --ledger {ledger_path} --foreground
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"""
+"""Systemd unit file template for the harvest supervisor.
+
+``{executable}`` and ``{ledger_path}`` are substituted at install time via
+:meth:`str.format`. The harvest runs in foreground (``--foreground`` blocks
+the main thread) under systemd supervision with ``Restart=always``.
+"""
+
+
+def _heartbeat_path(ledger_path: str) -> str:
+    """Return the fixed heartbeat path for a ledger (same dir as ledger)."""
+    return os.path.join(
+        os.path.dirname(os.path.abspath(ledger_path)), HEARTBEAT_FILENAME
+    )
+
+
+def _write_heartbeat(ledger_path: str) -> None:
+    """Write the current epoch to the heartbeat file, atomically.
+
+    tmp + fsync + ``os.replace``. Never raises: supervision must not
+    break the harvest tick (Artículo V).
+    """
+    try:
+        hb_path = _heartbeat_path(ledger_path)
+        tmp_path = hb_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            f.write(str(time.time()))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, hb_path)
+    except Exception:
+        pass
+
+
+def _effective_harvest_interval() -> int:
+    """Effective harvest interval in seconds (env ``CAUSADB_HARVEST_INTERVAL`` minutes)."""
+    try:
+        return int(os.environ.get("CAUSADB_HARVEST_INTERVAL", "5")) * 60
+    except (ValueError, TypeError):
+        return 300
+
+
+def get_harvest_health(ledger_path: str) -> dict:
+    """Return harvest liveness ``{"last_tick", "age_s", "stale"}``.
+
+    Threshold ``N=3``: stale when ``age_s > 3 × intervalo efectivo``.
+    Missing or corrupt heartbeat → ``stale=True``. Never raises.
+    """
+    try:
+        interval = _effective_harvest_interval()
+        hb_path = _heartbeat_path(ledger_path)
+        with open(hb_path, "r") as f:
+            last_tick = float(f.read().strip())
+        age_s = time.time() - last_tick
+        return {
+            "last_tick": last_tick,
+            "age_s": age_s,
+            "stale": age_s > 3 * interval,
+        }
+    except Exception:
+        return {"last_tick": None, "age_s": None, "stale": True}
+
 class HarvesterDaemon:
     def __init__(self, ledger_path: str):
         self.ledger_path = ledger_path
@@ -218,6 +300,11 @@ class HarvesterDaemon:
             logging.error(f"Error during harvest: {e}")
         finally:
             self._active_thread = None
+
+        # Heartbeat del tick (supervisión): un epoch float en
+        # <dirname(ledger)>/harvest.heartbeat, escritura atómica.
+        # Fuera del ledger (jamás un evento — protocolo intacto).
+        _write_heartbeat(self.ledger_path)
 
         # GAP-01 — cobertura: si hay stores de gemini-cli con sesiones sin
         # cosechar, avisarlo (no falla el tick; el gap se cierra solo en la
@@ -309,6 +396,47 @@ def install_service(ledger_path: str) -> Tuple[bool, str]:
     try:
         os.makedirs(SYSTEMD_USER_DIR, exist_ok=True)
         service_path = os.path.join(SYSTEMD_USER_DIR, f"{SERVICE_NAME}.service")
+        with open(service_path, "w") as f:
+            f.write(service_content)
+        return (True, service_path)
+    except OSError as exc:
+        return (False, str(exc))
+
+
+def install_harvest_service(ledger_path: str) -> Tuple[bool, str]:
+    """Install (write) the ``causadb-harvest.service`` systemd user unit file.
+
+    Creates ``~/.config/systemd/user/causadb-harvest.service`` with an
+    ``ExecStart`` that runs ``causadb harvest start --ledger <ledger_path>
+    --foreground`` in foreground under systemd supervision (``Type=simple``,
+    ``Restart=always``, ``RestartSec=5``).
+
+    Only WRITES the unit file — it never runs ``enable``, ``linger`` or
+    ``daemon-reload``. Manual activation::
+
+        systemctl --user daemon-reload
+        systemctl --user enable --now causadb-harvest.service
+
+    Args:
+        ledger_path: Absolute path to the ledger file that the harvester
+            should cosechar.
+
+    Returns:
+        ``(True, absolute_path_to_service_file)`` on success.
+        ``(False, error_message)`` on failure (e.g. permission denied).
+    """
+    executable = _find_causadb_executable()
+    # Escape spaces for systemd ExecStart (precedente: install_service ~304)
+    ledger_path_escaped = ledger_path.replace(" ", "\\x20")
+    service_content = HARVEST_SERVICE_TEMPLATE.format(
+        executable=executable,
+        ledger_path=ledger_path_escaped,
+    )
+    try:
+        os.makedirs(SYSTEMD_USER_DIR, exist_ok=True)
+        service_path = os.path.join(
+            SYSTEMD_USER_DIR, f"{HARVEST_SERVICE_NAME}.service"
+        )
         with open(service_path, "w") as f:
             f.write(service_content)
         return (True, service_path)

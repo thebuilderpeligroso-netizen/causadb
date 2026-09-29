@@ -16,6 +16,8 @@ El ledger `ledger.log` es una secuencia de eventos ordenados, cada uno firmado c
 
 Cualquier agente compatible con MCP se conecta con `causadb config mcp --auto`. Son **21 tools + 4 recursos**, agrupadas por cuándo usarlas. (El MCP server también se puede exponer por **HTTP (streamable-http)** — ver el final de esta sección.)
 
+> **Nombres MCP:** A nivel protocolo los nombres son `query`, `revive`, `log_decision` (ver `causadb/mcp/server.py`); cada cliente MCP antepone el nombre del servidor, así los agentes los ven como `causadb_*`.
+
 ### Escritura (registrar cosas nuevas)
 
 | Tool | Cuándo usarla |

@@ -15,6 +15,7 @@ Fase 1 (H-OPS.1): ``start --daemon`` daemoniza (double-fork + PID file);
 """
 
 import json
+import logging
 import os
 import subprocess
 import socket
@@ -76,6 +77,58 @@ def cmd_serve(args) -> Tuple[int, str]:
         return (1, json.dumps({"error": f"Unknown action: {action}"}))
 
 
+def _attach_user_store(auth_manager, ledger_path: str):
+    """Adjunta el UserStore persistente al AuthManager del serve.
+
+    Deriva ``config_dir`` como el directorio ``.causadb`` que contiene el
+    ``ledger_path`` YA resuelto (robusto bajo systemd donde cwd=/; NO usa
+    ``WorkspaceManager.discover(os.getcwd())``). Enchufa vía la API pública
+    ``AuthManager.enable_with_user_store(config_dir, {master: admin})``
+    (``_auth.py:158``), preservando dev-keys-primero: ``authenticate()``
+    chequea ``_api_keys`` antes que el store (``_auth.py:200-208``).
+
+    Alimenta AMBOS stores con el MISMO objeto UserStore:
+      - ``auth_manager._user_store`` (vía ``enable_with_user_store``; lo usan
+        ``authenticate()`` y ``_handle_auth_me``).
+      - ``handler._user_store`` (el caller pasa ``user_store=
+        auth_manager.user_store`` a ``serve()``; lo usa ``_handle_auth_login``).
+      ``serve()`` NO propaga uno al otro (``_rest_api.py:1120-1124`` pasa ambos
+      por separado al handler), por eso el caller debe pasar ambos.
+
+    Store vacío/ausente → degrada a solo-maestra con log informativo (el serve
+    de producción con cero usuarios sigue arrancando igual). Fail-closed SOLO
+    si falta la llave maestra (ya implementado en ``_build_rest_auth_or_fail``,
+    no se toca).
+    """
+    if auth_manager is None:
+        return None
+    try:
+        config_dir = os.path.dirname(os.path.abspath(ledger_path))
+        dev_keys = dict(getattr(auth_manager, "_api_keys", {}) or {})
+        auth_manager.enable_with_user_store(config_dir, dev_keys or None)
+        try:
+            n = auth_manager.user_store.user_count()
+        except Exception:
+            n = None
+        if not n:
+            logging.info(
+                "CausaDB REST: user store vacío/ausente en %s — "
+                "degradado a solo-maestra",
+                config_dir,
+            )
+        else:
+            logging.info(
+                "CausaDB REST: user store con %d usuario(s) en %s",
+                n, config_dir,
+            )
+    except Exception as e:
+        logging.warning(
+            "CausaDB REST: no se pudo adjuntar user store (%s) — "
+            "sigo solo-maestra", e,
+        )
+    return auth_manager
+
+
 def _serve_blocking(ledger_path: str, host, port, auth_manager=None) -> None:
     """Bloquea en serve_forever() con el wiring del daemon ya hecho.
 
@@ -90,8 +143,10 @@ def _serve_blocking(ledger_path: str, host, port, auth_manager=None) -> None:
         set_current_server(server)
         daemon.start()
 
+    _attach_user_store(auth_manager, ledger_path)
+    user_store = getattr(auth_manager, "user_store", None) if auth_manager is not None else None
     serve(ledger_path, host=host or "127.0.0.1", port=port or 7457,
-          auth_manager=auth_manager,
+          auth_manager=auth_manager, user_store=user_store,
           on_server_created=_on_server_created)
 
 

@@ -410,6 +410,8 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Ledger path (auto-discover from .causadb/ if omitted).")
     p_harvest.add_argument("--daemon", action="store_true",
                            help="Run in background as a daemon (fork + PID file).")
+    p_harvest.add_argument("--foreground", action="store_true",
+                           help="Run in foreground, blocking (for systemd Type=simple supervision).")
     p_harvest.set_defaults(func=cmd_harvest)
 
     # F1.1 — Génesis: onboarding one-shot para proyectos ya comenzados.

@@ -45,6 +45,12 @@ def _start(ledger: str, args) -> Tuple[int, str]:
     Flow (patrón vigilante): check is_running → daemonize (si --daemon) →
     instanciar daemon → handlers → start. El check ANTES del fork evita
     dobles arranques cuando el daemon ya corre.
+
+    ``--foreground`` (supervisión systemd, ``Type=simple``): tras
+    ``daemon.start()`` el hilo principal bloquea en el shutdown event
+    mientras los Timer ticks corren en background — el proceso NO retorna,
+    así ``Restart=always`` no entra en loop. ``--daemon`` forkea primero y
+    luego bloquea igual (precedente: vigilante).
     """
     platform_daemon = get_daemon()
     if platform_daemon.is_running("harvest"):
@@ -59,10 +65,22 @@ def _start(ledger: str, args) -> Tuple[int, str]:
     daemon.start()  # primer tick en background (auditoría F)
 
     # Con --daemon: mantener vivo el proceso forkeado mientras el timer corre.
+    # (Precedente intacto — no tocar: path daemon sedimentado.)
     if getattr(args, "daemon", False):
         try:
             while daemon.timer is not None and daemon.timer.is_alive():
                 time.sleep(1.0)
+        except KeyboardInterrupt:
+            daemon.stop()
+
+    # Con --foreground (supervisión systemd, Type=simple): bloquear el hilo
+    # principal en el shutdown event mientras los Timer ticks corren en
+    # background. Sin esto el proceso retornaría y Restart=always entraría
+    # en loop sin tick estable.
+    if getattr(args, "foreground", False):
+        try:
+            while not daemon._shutdown_event.is_set():
+                daemon._shutdown_event.wait(timeout=0.5)
         except KeyboardInterrupt:
             daemon.stop()
 

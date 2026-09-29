@@ -195,6 +195,8 @@ Memory is organized in three tiers:
 
 CausaDB exposes an **MCP server with 21 tools + 4 resources** (including `recover` to reconstruct a session's full storyboard from raw source) that any compatible agent invokes in a second:
 
+> **MCP naming:** Protocol names are `query`, `revive`, `log_decision` (see `causadb/mcp/server.py`); each MCP client prefixes the server name, so agents see them as `causadb_*`.
+
 ```bash
 causadb opencode-config --project /your/project
 ```

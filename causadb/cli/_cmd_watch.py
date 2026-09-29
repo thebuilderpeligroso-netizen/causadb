@@ -489,6 +489,16 @@ def _watch_status(ledger: str, format: str = "text") -> Tuple[int, str]:
     """
     daemon = get_daemon()
     unit_status = get_unit_status()
+    try:
+        harvest_unit_status = get_unit_status("causadb-harvest")
+    except TypeError:
+        harvest_unit_status = get_unit_status()
+    try:
+        from causadb._daemon_service import get_harvest_health
+        harvest_health = get_harvest_health(ledger)
+    except Exception as exc:
+        harvest_health = {"last_tick": None, "age_s": None,
+                          "stale": True, "error": str(exc)}
 
     # Check PID files for each service
     pid_status = {
@@ -500,16 +510,38 @@ def _watch_status(ledger: str, format: str = "text") -> Tuple[int, str]:
     }
 
     # Determine watch_forks status
-    # If systemd unit is active and covers serve/harvest, those are "skipped_by_unit"
+    # Serve path INTACTO: si el unit causadb cubre serve/harvest, serve es
+    # "skipped_by_unit". Harvest: gobernanza por su propia unidad
+    # causadb-harvest SOLO cuando está instalada; si NO está instalada,
+    # fallback legacy (paridad T1): el ExecStart del serve ("serve start")
+    # cubre al harvest → "skipped_by_unit", si no por PID.
+    harvest_unit_installed = bool(
+        getattr(harvest_unit_status, "installed", False)
+    )
+    harvest_unit_active = bool(
+        getattr(harvest_unit_status, "active", False)
+    )
+    covers_serve_harvest = "serve start" in (unit_status.exec_start or "")
+
+    def _harvest_fork_status() -> str:
+        if harvest_unit_installed:
+            if harvest_unit_active:
+                return "skipped_by_unit"
+            return "running" if pid_status["harvest"] else "stopped"
+        if (unit_status.active and unit_status.installed
+                and covers_serve_harvest):
+            return "skipped_by_unit"
+        return "running" if pid_status["harvest"] else "stopped"
+
+    harvest_fork = _harvest_fork_status()
     watch_forks = {}
     if unit_status.active and unit_status.installed:
         # Check if unit covers serve/harvest (ExecStart contains "serve start")
-        covers_serve_harvest = "serve start" in unit_status.exec_start
         watch_forks = {
             "vigilante": "running" if pid_status["vigilante"] else "stopped",
             "mcp_proxy": "running" if pid_status["mcp_proxy"] else "stopped",
             "proxy_server": "running" if pid_status["proxy_server"] else "stopped",
-            "harvest": "skipped_by_unit" if covers_serve_harvest else ("running" if pid_status["harvest"] else "stopped"),
+            "harvest": harvest_fork,
             "serve": "skipped_by_unit" if covers_serve_harvest else ("running" if pid_status["serve"] else "stopped"),
         }
     else:
@@ -517,7 +549,7 @@ def _watch_status(ledger: str, format: str = "text") -> Tuple[int, str]:
             "vigilante": "running" if pid_status["vigilante"] else "stopped",
             "mcp_proxy": "running" if pid_status["mcp_proxy"] else "stopped",
             "proxy_server": "running" if pid_status["proxy_server"] else "stopped",
-            "harvest": "running" if pid_status["harvest"] else "stopped",
+            "harvest": harvest_fork,
             "serve": "running" if pid_status["serve"] else "stopped",
         }
 
@@ -536,6 +568,17 @@ def _watch_status(ledger: str, format: str = "text") -> Tuple[int, str]:
             "since": unit_status.since,
             "load_error": unit_status.load_error,
         },
+        "harvest_unit": {
+            "installed": harvest_unit_status.installed,
+            "active": harvest_unit_status.active,
+            "state": harvest_unit_status.state,
+            "enabled": harvest_unit_status.enabled,
+            "main_pid": harvest_unit_status.main_pid,
+            "exec_start": harvest_unit_status.exec_start,
+            "since": harvest_unit_status.since,
+            "load_error": harvest_unit_status.load_error,
+        },
+        "harvest_health": harvest_health,
         "watch_forks": watch_forks,
         "last_restart": last_restart,
     }
@@ -609,6 +652,28 @@ def _format_status_text(result: dict) -> str:
             lines.append(f"  Timestamp: {time.ctime(lr['timestamp'])}")
     else:
         lines.append("Last Restart: (none recorded)")
+
+    # Bloque cosecha (aditivo; no altera el formato previo).
+    lines.append("")
+    hu = result.get("harvest_unit") or {}
+    lines.append("Harvest Unit:")
+    lines.append(f"  Installed: {hu.get('installed')}")
+    lines.append(f"  Active: {hu.get('active')}")
+    lines.append(f"  State: {hu.get('state')}")
+    hh = result.get("harvest_health") or {}
+    lines.append("")
+    lines.append("Harvest Health:")
+    if hh.get("last_tick") is None:
+        lines.append("  Last tick: never")
+    else:
+        import time as _time
+        lines.append(f"  Last tick: {_time.ctime(hh['last_tick'])}")
+        if hh.get("age_s") is not None:
+            lines.append(f"  Age: {hh['age_s']:.0f}s")
+    if hh.get("stale"):
+        lines.append("  Status: STALE — harvest sin latido reciente")
+    else:
+        lines.append("  Status: OK")
 
     return "\n".join(lines)
 
